@@ -198,7 +198,7 @@ team experience（2026-03-10）：
 - 最新审计：`97 份 = Green 97 / Yellow 0 / Red 0`
 
 ### Phase B 收口加固（2026-03-11）
-- 为 6 份已 green 但非满分文档补齐严格模板项：`F081/F084/F085/F087/F090/F092`
+- 为 5 份已 green 但非满分文档补齐严格模板项：`F081/F084/F085/F087/F092`
 - 审计结果升级为：`averageScore=100`、`missingFrequency={}`
 
 ### 技术决策

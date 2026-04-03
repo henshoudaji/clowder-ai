@@ -82,7 +82,7 @@ describe('F045: ThinkingContent thinkingMode toggle', () => {
     personality: '',
   }));
 
-  it('default: thinking block is collapsed', async () => {
+  it('default: completed thinking block is collapsed', async () => {
     const { ChatMessage } = await import('@/components/ChatMessage');
 
     act(() => {
@@ -95,8 +95,7 @@ describe('F045: ThinkingContent thinkingMode toggle', () => {
     });
 
     // Collapsed: button visible with label, full thinking text NOT rendered
-    const buttons = container.querySelectorAll('button');
-    const thinkingButton = Array.from(buttons).find((b) => b.textContent?.includes('Thinking'));
+    const thinkingButton = container.querySelector('[data-testid="thinking-toggle"]');
     expect(thinkingButton).toBeTruthy();
 
     // Full content should NOT be in the DOM when collapsed
@@ -179,18 +178,10 @@ describe('F045: ThinkingContent thinkingMode toggle', () => {
       );
     });
 
-    // F097: stream content now renders inside CliOutputBlock, not ThinkingContent
-    expect(container.textContent).toContain('CLI Output');
-
-    // Click to expand → content visible in terminal substrate
-    const cliButton = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('CLI Output'),
-    );
-    expect(cliButton).toBeTruthy();
-    act(() => {
-      cliButton?.click();
-    });
-
+    // F097: stream content without tool calls keeps plain stream output
+    expect(container.querySelector('[data-testid="cli-output-toggle"]')).toBeNull();
     expect(container.textContent).toContain('stream inner monologue content here');
+
+    expect(container.textContent).not.toContain('已执行0次工具调用');
   });
 });

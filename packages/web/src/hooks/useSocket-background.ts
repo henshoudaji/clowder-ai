@@ -330,7 +330,14 @@ export function handleBackgroundAgentMessage(
           origin: 'callback',
           isStreaming: false,
           ...(msg.metadata ? { metadata: msg.metadata } : {}),
-          ...(msg.extra?.crossPost ? { extra: { crossPost: msg.extra.crossPost } } : {}),
+          ...(msg.extra?.crossPost || replacementTarget.invocationId
+            ? {
+                extra: {
+                  ...(msg.extra?.crossPost ? { crossPost: msg.extra.crossPost } : {}),
+                  ...(replacementTarget.invocationId ? { stream: { invocationId: replacementTarget.invocationId } } : {}),
+                },
+              }
+            : {}),
           ...(msg.mentionsUser ? { mentionsUser: true } : {}),
           ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
           ...(msg.replyPreview ? { replyPreview: msg.replyPreview } : {}),
@@ -347,13 +354,21 @@ export function handleBackgroundAgentMessage(
         finalMsgId = cbId;
       } else {
         const cbId = msg.messageId ?? `bg-cb-${msg.timestamp}-${msg.catId}-${options.nextBgSeq()}`;
+        const bgInvocationId = msg.invocationId ?? getThreadInvocationId(msg, options);
         options.store.addMessageToThread(msg.threadId, {
           id: cbId,
           type: 'assistant',
           catId: msg.catId,
           content: msg.content,
           ...(msg.metadata ? { metadata: msg.metadata } : {}),
-          ...(msg.extra?.crossPost ? { extra: { crossPost: msg.extra.crossPost } } : {}),
+          ...(msg.extra?.crossPost || bgInvocationId
+            ? {
+                extra: {
+                  ...(msg.extra?.crossPost ? { crossPost: msg.extra.crossPost } : {}),
+                  ...(bgInvocationId ? { stream: { invocationId: bgInvocationId } } : {}),
+                },
+              }
+            : {}),
           ...(msg.mentionsUser ? { mentionsUser: true } : {}),
           ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
           ...(msg.replyPreview ? { replyPreview: msg.replyPreview } : {}),
@@ -363,7 +378,6 @@ export function handleBackgroundAgentMessage(
         // #586 Bug 1 (TD112): Callback created new bubble without finding a stream
         // placeholder. Mark invocation as replaced so late background stream chunks
         // are suppressed instead of spawning a duplicate bubble.
-        const bgInvocationId = msg.invocationId ?? getThreadInvocationId(msg, options);
         if (bgInvocationId) {
           options.replacedInvocations.set(streamKey, bgInvocationId);
         }

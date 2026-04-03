@@ -248,6 +248,7 @@ describe('background thread socket handling', () => {
         content: 'callback note',
         origin: 'callback',
         messageId: 'msg-callback-1',
+        invocationId: 'inv-bg-1',
         timestamp: Date.now(),
       });
 
@@ -255,6 +256,7 @@ describe('background thread socket handling', () => {
       expect(ts.messages).toHaveLength(1);
       expect(ts.messages[0]?.id).toBe('msg-callback-1');
       expect(ts.messages[0]?.origin).toBe('callback');
+      expect(ts.messages[0]?.extra).toEqual({ stream: { invocationId: 'inv-bg-1' } });
     });
 
     it('callback-origin text replaces overlapping background stream bubble from the same invocation', () => {
@@ -894,6 +896,42 @@ describe('background thread socket handling', () => {
       expect(ts.messages[1]?.variant).toBe('info');
       expect(ts.messages[2]?.variant).toBe('a2a_followup');
       expect(ts.messages[2]?.content).toContain('缅因猫 @了 opus');
+    });
+
+    it('consumes processing_status system_info silently and updates background cat status', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'system_info',
+        catId: 'codex',
+        threadId: 'thread-bg',
+        content: JSON.stringify({
+          type: 'processing_status',
+          status: 'thinking',
+        }),
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      expect(ts.messages).toHaveLength(0);
+      expect(ts.catStatuses.codex).toBe('streaming');
+    });
+
+    it('consumes pseudo-object thinking system_info silently in background threads', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'system_info',
+        catId: 'office',
+        threadId: 'thread-bg',
+        content: 'type: thinking, catId: office, text: 流程',
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      expect(ts.messages).toHaveLength(1);
+      expect(ts.messages[0]?.type).toBe('assistant');
+      expect(ts.messages[0]?.thinking).toBe('流程');
     });
 
     it('consumes invocation_usage system_info into thread invocation + message metadata (no raw JSON message)', () => {

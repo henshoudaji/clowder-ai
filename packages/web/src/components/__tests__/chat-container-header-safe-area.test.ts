@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { ChatContainerHeader } from '@/components/ChatContainerHeader';
 
 vi.mock('@/hooks/useTheme', () => ({
-  useTheme: () => ({ theme: 'default', toggleTheme: vi.fn() }),
+  useTheme: () => ({ theme: 'warm', toggleTheme: vi.fn() }),
 }));
 
 vi.mock('@/stores/chatStore', () => {

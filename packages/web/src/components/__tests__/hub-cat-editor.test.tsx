@@ -35,7 +35,7 @@ const ALL_CLIENTS_RESPONSE = {
     { id: 'dare', label: 'Dare', command: 'dare', available: true },
     { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
     { id: 'relayclaw', label: 'jiuwen', command: 'jiuwenclaw-app', available: true },
-    { id: 'acp', label: 'ACP', command: 'agent-teams gateway acp stdio', available: true },
+    { id: 'acp', label: 'ACP', command: 'tools/python/python.exe -m agent_teams gateway acp stdio', available: true },
     { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
   ],
 };
@@ -123,6 +123,10 @@ describe('HubCatEditor', () => {
       commandArgs: '',
       cliConfigArgs: [],
       ocProviderName: '',
+      embeddedAcpExecutablePath: '',
+      embeddedAcpArgs: '',
+      embeddedAcpCwd: '',
+      embeddedAcpEnvText: '',
       sessionChain: 'true',
       maxPromptTokens: '',
       maxContextTokens: '',
@@ -166,6 +170,10 @@ describe('HubCatEditor', () => {
       commandArgs: '',
       cliConfigArgs: [],
       ocProviderName: '',
+      embeddedAcpExecutablePath: '',
+      embeddedAcpArgs: '',
+      embeddedAcpCwd: '',
+      embeddedAcpEnvText: '',
       sessionChain: 'true',
       maxPromptTokens: '',
       maxContextTokens: '',
@@ -209,6 +217,10 @@ describe('HubCatEditor', () => {
       commandArgs: '',
       cliConfigArgs: [],
       ocProviderName: '',
+      embeddedAcpExecutablePath: '',
+      embeddedAcpArgs: '',
+      embeddedAcpCwd: '',
+      embeddedAcpEnvText: '',
       sessionChain: 'true',
       maxPromptTokens: '',
       maxContextTokens: '',
@@ -274,6 +286,326 @@ describe('HubCatEditor', () => {
     expect(filterProfiles('acp', profiles).map((profile) => profile.id)).toEqual(['agent-teams-local']);
   });
 
+  it('treats embedded Agent Teams members as API-key bound and ignores legacy ACP config bindings', async () => {
+    const existingCat = {
+      id: 'agentteams',
+      name: '协作引擎',
+      displayName: '协作引擎',
+      nickname: '小协',
+      provider: 'acp',
+      defaultModel: 'gpt-5.4',
+      color: { primary: '#5B8C5A', secondary: '#D4E6D3' },
+      mentionPatterns: ['@agentteams'],
+      avatar: '/avatars/agentteams.png',
+      roleDescription: 'coordination',
+      source: 'seed',
+      embeddedRuntimeKind: 'agentteams_acp',
+    } as CatData;
+
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/provider-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: null,
+            providers: [
+              {
+                id: 'legacy-at',
+                provider: 'legacy-at',
+                displayName: 'Legacy ACP',
+                name: 'Legacy ACP',
+                authType: 'none',
+                kind: 'acp',
+                builtin: false,
+                mode: 'none',
+                protocol: 'acp',
+                command: 'agent-teams',
+                args: ['gateway', 'acp', 'stdio'],
+                hasApiKey: false,
+                createdAt: '2026-03-18T00:00:00.000Z',
+                updatedAt: '2026-03-18T00:00:00.000Z',
+              },
+              {
+                id: 'codex-sponsor',
+                provider: 'codex-sponsor',
+                displayName: 'Codex Sponsor',
+                name: 'Codex Sponsor',
+                authType: 'api_key',
+                protocol: 'openai',
+                builtin: false,
+                mode: 'api_key',
+                models: ['gpt-5.4', 'gpt-4o-mini'],
+                hasApiKey: true,
+                createdAt: '2026-03-18T00:00:00.000Z',
+                updatedAt: '2026-03-18T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (path === '/api/config/session-strategy') {
+        return Promise.resolve(jsonResponse({ cats: [] }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, {
+          open: true,
+          cat: existingCat,
+          configCat: {
+            displayName: '协作引擎',
+            provider: 'acp',
+            model: 'gpt-5.4',
+            mcpSupport: true,
+            accountRef: 'legacy-at',
+          },
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+    });
+    await flushEffects();
+
+    const accountSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]');
+    expect(accountSelect.value).toBe('');
+    const optionLabels = Array.from(accountSelect.options).map((option) => option.textContent ?? '');
+    expect(optionLabels).toContain('Codex Sponsor（API Key）');
+    expect(optionLabels.some((label) => label.includes('Legacy ACP'))).toBe(false);
+    const clientSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="Client"]');
+    expect(clientSelect.options[clientSelect.selectedIndex]?.textContent).toBe('Assistant Agent');
+  });
+
+  it('saves embedded Agent Teams ACP overrides in the dedicated ACP config section', async () => {
+    const existingCat = {
+      id: 'agentteams',
+      name: '协作引擎',
+      displayName: '协作引擎',
+      nickname: '小协',
+      provider: 'relayclaw',
+      defaultModel: 'mimo-v2-flash',
+      color: { primary: '#5B8C5A', secondary: '#D4E6D3' },
+      mentionPatterns: ['@agentteams'],
+      avatar: '/avatars/agentteams.png',
+      roleDescription: 'coordination',
+      source: 'seed',
+      embeddedRuntimeKind: 'agentteams_acp',
+    } as CatData;
+
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/provider-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: null,
+            providers: [
+              {
+                id: 'codex-sponsor',
+                provider: 'codex-sponsor',
+                displayName: 'Codex Sponsor',
+                name: 'Codex Sponsor',
+                authType: 'api_key',
+                protocol: 'openai',
+                builtin: false,
+                mode: 'api_key',
+                models: ['mimo-v2-flash', 'gpt-4o-mini'],
+                hasApiKey: true,
+                createdAt: '2026-03-18T00:00:00.000Z',
+                updatedAt: '2026-03-18T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (path === '/api/config/session-strategy') {
+        return Promise.resolve(jsonResponse({ cats: [] }));
+      }
+      if (path === '/api/cats/agentteams' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ cat: { id: 'agentteams' } }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, {
+          open: true,
+          cat: existingCat,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+    });
+    await flushEffects();
+
+    expect(container.textContent).toContain('ACP 配置');
+    expect(container.textContent).not.toContain('仅对协作引擎生效');
+    expect(queryField<HTMLInputElement>(container, 'input[aria-label="EXE Path"]').value).toBe('');
+    expect(queryField<HTMLTextAreaElement>(container, 'textarea[aria-label="ACP Env"]').value).toBe('');
+    expect(queryField<HTMLSelectElement>(container, 'select[aria-label="Client"]').value).toBe('relayclaw');
+
+    await changeField(queryField(container, 'select[aria-label="认证信息"]'), 'codex-sponsor', 'change');
+    await flushEffects();
+    await changeField(queryField(container, 'input[aria-label="EXE Path"]'), 'vendor/agent-teams/agent-teams.exe');
+    await changeField(queryField(container, 'input[aria-label="ACP Args"]'), '--trace gateway acp stdio');
+    await changeField(queryField(container, 'textarea[aria-label="ACP Env"]'), 'FOO=bar\nBAR=baz');
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === '保存修改',
+    );
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flushEffects();
+
+    const patchCall = mockApiFetch.mock.calls.find(
+      ([path, requestInit]) => path === '/api/cats/agentteams' && requestInit?.method === 'PATCH',
+    );
+    expect(patchCall).toBeTruthy();
+    const payload = JSON.parse(String(patchCall?.[1]?.body));
+    expect(payload.accountRef).toBe('codex-sponsor');
+    expect(payload.defaultModel).toBe('mimo-v2-flash');
+    expect(payload.client).toBe('relayclaw');
+    expect(payload.embeddedAcpExecutablePath).toBe('vendor/agent-teams/agent-teams.exe');
+    expect(payload.embeddedAcpConfig).toEqual({
+      executablePath: 'vendor/agent-teams/agent-teams.exe',
+      args: ['--trace', 'gateway', 'acp', 'stdio'],
+      env: { FOO: 'bar', BAR: 'baz' },
+    });
+  });
+
+  it('shows model-config sources alongside API key profiles for embedded Agent Teams members', async () => {
+    const existingCat = {
+      id: 'agentteams',
+      name: '协作引擎',
+      displayName: '协作引擎',
+      nickname: '小协',
+      provider: 'relayclaw',
+      defaultModel: 'mimo-v2-flash',
+      color: { primary: '#5B8C5A', secondary: '#D4E6D3' },
+      mentionPatterns: ['@agentteams'],
+      avatar: '/avatars/agentteams.png',
+      roleDescription: 'coordination',
+      source: 'seed',
+      embeddedRuntimeKind: 'agentteams_acp',
+    } as CatData;
+
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/model-config-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: 'global',
+            exists: true,
+            providers: [
+              {
+                id: 'huawei-maas',
+                provider: 'huawei-maas',
+                source: 'model_config',
+                displayName: 'Huawei MaaS',
+                name: 'Huawei MaaS',
+                authType: 'none',
+                kind: 'api_key',
+                builtin: false,
+                mode: 'none',
+                protocol: 'huawei_maas',
+                models: ['glm-5', 'qwen3-32b'],
+                hasApiKey: false,
+                createdAt: '2026-03-28T00:00:00.000Z',
+                updatedAt: '2026-03-28T00:00:00.000Z',
+              },
+              {
+                id: 'my-openai-proxy',
+                provider: 'my-openai-proxy',
+                source: 'model_config',
+                displayName: 'My OpenAI Proxy',
+                name: 'My OpenAI Proxy',
+                authType: 'api_key',
+                kind: 'api_key',
+                builtin: false,
+                mode: 'api_key',
+                protocol: 'openai',
+                models: ['glm-5', 'gpt-4o-mini'],
+                hasApiKey: true,
+                createdAt: '2026-03-28T00:00:00.000Z',
+                updatedAt: '2026-03-28T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (path === '/api/provider-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: null,
+            providers: [
+              {
+                id: 'codex-sponsor',
+                provider: 'codex-sponsor',
+                displayName: 'Codex Sponsor',
+                name: 'Codex Sponsor',
+                authType: 'api_key',
+                protocol: 'openai',
+                builtin: false,
+                mode: 'api_key',
+                models: ['mimo-v2-flash', 'gpt-4o-mini'],
+                hasApiKey: true,
+                createdAt: '2026-03-18T00:00:00.000Z',
+                updatedAt: '2026-03-18T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (path === '/api/config/session-strategy') {
+        return Promise.resolve(jsonResponse({ cats: [] }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(HubCatEditor, {
+          open: true,
+          cat: existingCat,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+    });
+    await flushEffects();
+
+    const accountSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]');
+    const accountLabels = Array.from(accountSelect.options).map((option) => option.textContent ?? '');
+    expect(accountLabels).toContain('Huawei MaaS（模型配置）');
+    expect(accountLabels).toContain('My OpenAI Proxy（模型配置）');
+    expect(accountLabels).toContain('Codex Sponsor（API Key）');
+
+    await changeField(accountSelect, 'huawei-maas', 'change');
+    await flushEffects();
+    const huaweiModels = Array.from(queryField<HTMLSelectElement>(container, 'select[aria-label="Model"]').options).map(
+      (option) => option.value,
+    );
+    expect(huaweiModels).toContain('glm-5');
+
+    await changeField(accountSelect, 'my-openai-proxy', 'change');
+    await flushEffects();
+    const proxyModels = Array.from(queryField<HTMLSelectElement>(container, 'select[aria-label="Model"]').options).map(
+      (option) => option.value,
+    );
+    expect(proxyModels).toContain('gpt-4o-mini');
+  });
+
   it('keeps Claude and Codex in the Client dropdown even when detection marks them unavailable', async () => {
     mockApiFetch.mockImplementation((path: string) => {
       if (path === '/api/provider-profiles') {
@@ -295,7 +627,7 @@ describe('HubCatEditor', () => {
               { id: 'dare', label: 'Dare', command: 'dare', available: false },
               { id: 'opencode', label: 'OpenCode', command: 'opencode', available: false },
               { id: 'relayclaw', label: 'jiuwenClaw', command: 'jiuwenclaw-app', available: true },
-              { id: 'acp', label: 'ACP', command: 'agent-teams gateway acp stdio', available: false },
+              { id: 'acp', label: 'ACP', command: 'tools/python/python.exe -m agent_teams gateway acp stdio', available: false },
               { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: false },
             ],
           }),
@@ -465,7 +797,7 @@ describe('HubCatEditor', () => {
 
     const accountSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]');
     const accountLabels = Array.from(accountSelect.options).map((option) => option.textContent ?? '');
-    expect(accountLabels).toContain('Huawei MaaS');
+    expect(accountLabels).toContain('Huawei MaaS（模型配置）');
     expect(accountLabels.some((label) => label.includes('API Key'))).toBe(false);
     await changeField(accountSelect, 'huawei-maas', 'change');
     await flushEffects();
@@ -541,7 +873,7 @@ describe('HubCatEditor', () => {
 
     const accountSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]');
     const accountLabels = Array.from(accountSelect.options).map((option) => option.textContent ?? '');
-    expect(accountLabels).toContain('My OpenAI Proxy');
+    expect(accountLabels).toContain('My OpenAI Proxy（模型配置）');
     expect(accountLabels.some((label) => label.includes('API Key'))).toBe(false);
     await changeField(accountSelect, 'my-openai-proxy', 'change');
     await flushEffects();
@@ -562,6 +894,84 @@ describe('HubCatEditor', () => {
     const payload = JSON.parse(String(postCall?.[1]?.body));
     expect(payload.accountRef).toBe('my-openai-proxy');
     expect(payload.defaultModel).toBe('glm-5');
+  });
+
+  it('loads ACP providers from provider-profiles when client is ACP even if ~/.cat-cafe/model.json exists', async () => {
+    const onSaved = vi.fn(() => Promise.resolve());
+    useChatStore.getState().setCurrentProject('/tmp/project');
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/model-config-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: 'global',
+            exists: true,
+            providers: [
+              {
+                id: 'huawei-maas',
+                provider: 'huawei-maas',
+                source: 'model_config',
+                displayName: 'Huawei MaaS',
+                name: 'Huawei MaaS',
+                authType: 'none',
+                kind: 'api_key',
+                builtin: false,
+                mode: 'none',
+                protocol: 'huawei_maas',
+                models: ['glm-5'],
+                hasApiKey: false,
+                createdAt: '2026-03-28T00:00:00.000Z',
+                updatedAt: '2026-03-28T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (String(path).startsWith('/api/provider-profiles')) {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: null,
+            providers: [
+              {
+                id: 'agent-teams-local',
+                provider: 'agent-teams-local',
+                displayName: 'Agent Teams Local',
+                name: 'Agent Teams Local',
+                authType: 'none',
+                kind: 'acp',
+                builtin: false,
+                mode: 'none',
+                protocol: 'acp',
+                command: 'agent-teams',
+                args: ['gateway', 'acp', 'stdio'],
+                cwd: '/tmp/project',
+                hasApiKey: false,
+                createdAt: '2026-03-28T00:00:00.000Z',
+                updatedAt: '2026-03-28T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(React.createElement(HubCatEditor, { open: true, onClose: vi.fn(), onSaved }));
+    });
+    await flushEffects();
+
+    await changeField(queryField(container, 'select[aria-label="Client"]'), 'acp', 'change');
+    await flushEffects();
+    await flushEffects();
+
+    const accountSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]');
+    const accountLabels = Array.from(accountSelect.options).map((option) => option.textContent ?? '');
+    expect(accountLabels).toContain('Agent Teams Local（ACP）');
+    expect(mockApiFetch.mock.calls.some(([path]) => String(path).startsWith('/api/provider-profiles'))).toBe(true);
   });
   it('blocks creating opencode+api_key member without ocProviderName', async () => {
     const onSaved = vi.fn(() => Promise.resolve());

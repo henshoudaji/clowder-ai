@@ -185,11 +185,13 @@ def _memory_prompt(language: str, is_cron: bool = False) -> str:
 #### 历史检索机制
 
 **响应任何消息前，必须执行：**
-1. 调用 `experience_retrieve` — 从任务记忆库检索与当前问题相关的历史经验（**每条消息必须执行**）
-2. 读取 `USER.md` — 确认服务对象
-3. 读取 `memory/YYYY-MM-DD.md`（当日 + 前一日）获取上下文
-4. **仅限主会话：** 读取 `MEMORY.md`
-5. **回答历史事件相关问题前：** 必须先调用 `memory_search` 工具检索历史记忆
+1. **身份确认** — 读取 `USER.md` 确认服务对象
+2. **上下文获取** — 读取 `memory/YYYY-MM-DD.md`（当日 + 前一日）
+3. **长期记忆加载** — **仅限主会话：** 读取 `MEMORY.md`
+4. **历史信息检索（强制）** — **回答任何关于历史事件、日期、人物、过去对话的问题前，必须先调用 `memory_search` 工具检索相关记忆**
+   - 搜索查询应包含问题中的关键信息（人名、日期、事件关键词）
+   - 如果搜索结果不足，尝试用不同的关键词再次搜索
+   - 基于检索到的记忆信息回答问题，不要依赖预训练知识
 
 #### 任务记忆工作流（在给出最终回复之前执行）
 
@@ -289,11 +291,13 @@ When valuable information is discovered during the conversation, it can be recor
 #### History Retrieval Mechanism
 
 **Before responding to any message, you MUST execute:**
-1. Call `experience_retrieve` — retrieve relevant past task experience for the current question (**required for every message**)
-2. Read `USER.md` — Confirm the user being served
-3. Read `memory/YYYY-MM-DD.md` (today + previous day) to get context
-4. **Main session only:** Read `MEMORY.md`
-5. **Before answering questions about historical events:** Must first call `memory_search` tool to retrieve historical memories
+1. Read `USER.md` — Confirm the user being served
+2. Read `memory/YYYY-MM-DD.md` (today + previous day) to get context
+3. **Main session only:** Read `MEMORY.md`
+4. **Historical information retrieval (mandatory):** Before answering any question about historical events, dates, people, or past conversations, you must call `memory_search` first
+   - Search query should include key information from the question (names, dates, event keywords)
+   - If results are insufficient, retry with different keywords
+   - Answer based on retrieved memory results, not pretraining knowledge
 
 #### Task Memory Workflow (run BEFORE giving the final reply)
 

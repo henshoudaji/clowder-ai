@@ -8,7 +8,6 @@ import {
   isDebugEnabled,
   recordDebugEvent,
 } from '@/debug/invocationEventDebug';
-import { useBrakeStore } from '@/stores/brakeStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useToastStore } from '@/stores/toastStore';
 import { API_URL } from '@/utils/api-client';
@@ -478,14 +477,6 @@ export function useSocket(callbacks: SocketCallbacks, threadId?: string) {
         timestamp: data.message.timestamp ?? Date.now(),
       });
     });
-
-    // F085 Phase 4: Hyperfocus brake trigger from backend activity tracking
-    socket.on(
-      'brake:trigger',
-      (data: { level: 1 | 2 | 3; activeMinutes: number; nightMode: boolean; timestamp: number }) => {
-        useBrakeStore.getState().show(data);
-      },
-    );
 
     // F101: Game state updates (per-seat scoped views)
     socket.on('game:state_update', (data: { gameId: string; view: unknown; timestamp: number }) => {

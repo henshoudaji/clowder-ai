@@ -17,6 +17,7 @@
 import type { CatId, ConnectorSource, MessageContent } from '@cat-cafe/shared';
 import { catRegistry, getConnectorDefinition } from '@cat-cafe/shared';
 import type { FastifyBaseLogger } from 'fastify';
+import type { IConnectorAgentConfigStore } from './ConnectorAgentConfigStore.js';
 import type { ConnectorCommandLayer } from './ConnectorCommandLayer.js';
 import { ConnectorMessageFormatter } from './ConnectorMessageFormatter.js';
 import type { IConnectorPermissionStore } from './ConnectorPermissionStore.js';
@@ -112,6 +113,7 @@ export interface ConnectorRouterOptions {
         transcribe(request: { audioPath: string; language?: string }): Promise<{ text: string }>;
       }
     | undefined;
+  readonly agentConfigStore?: IConnectorAgentConfigStore | undefined;
 }
 
 export class ConnectorRouter {
@@ -310,8 +312,23 @@ export class ConnectorRouter {
     };
 
     // Parse @-mentions to determine target cat
+    // If connector has agent config with whitelist, use primaryAgentId as default
+    // and only allow cats in the whitelist
     const mentionPatterns = this.getMentionPatterns();
-    const { targetCatId } = parseMentions(resolvedText, mentionPatterns, this.opts.defaultCatId);
+    let fallbackCatId: CatId = this.opts.defaultCatId;
+    let availableAgents: string[] | null = null;
+
+    if (this.opts.agentConfigStore) {
+      const agentConfig = await this.opts.agentConfigStore.get(connectorId, this.resolveOwnerUserId());
+      if (agentConfig && agentConfig.agentIds.length > 0) {
+        fallbackCatId = agentConfig.primaryAgentId as CatId;
+        availableAgents = agentConfig.agentIds;
+      }
+    }
+
+    const { targetCatId } = parseMentions(resolvedText, mentionPatterns, fallbackCatId);
+    // Whitelist check: if @mention targets a cat not in whitelist, use primary agent
+    const resolvedCatId = availableAgents && !availableAgents.includes(targetCatId) ? fallbackCatId : targetCatId;
 
     const stored = await messageStore.append({
       threadId: binding.threadId,
@@ -319,7 +336,7 @@ export class ConnectorRouter {
       catId: null,
       content: resolvedText,
       source,
-      mentions: [targetCatId],
+      mentions: [resolvedCatId],
       timestamp: Date.now(),
     });
 
@@ -331,10 +348,10 @@ export class ConnectorRouter {
       content: resolvedText,
     });
 
-    // 5. Trigger cat invocation (use parsed targetCatId)
+    // 5. Trigger cat invocation (use resolved cat from whitelist check)
     invokeTrigger.trigger(
       binding.threadId,
-      targetCatId,
+      resolvedCatId,
       this.resolveOwnerUserId(),
       resolvedText,
       stored.id,

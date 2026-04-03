@@ -129,10 +129,9 @@ export function HubCoCreatorEditor({ open, coCreator, onClose, onSaved }: HubCoC
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4">
       <div
         className="flex max-h-[88vh] w-full max-w-3xl flex-col rounded-[28px] border border-[#EFDCCB] bg-[#FDF8F3] shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between border-b border-[#F0DDCD] px-6 py-5">
           <div>

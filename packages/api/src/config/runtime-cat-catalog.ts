@@ -4,6 +4,7 @@ import type {
   CatBreed,
   CatCafeConfig,
   CatColor,
+  EmbeddedAcpConfig,
   CatProvider,
   CatVariant,
   CliConfig,
@@ -41,6 +42,8 @@ export interface RuntimeCatInput {
   cliConfigArgs?: string[];
   contextBudget?: ContextBudget;
   ocProviderName?: string;
+  embeddedAcpExecutablePath?: string;
+  embeddedAcpConfig?: EmbeddedAcpConfig;
 }
 
 export interface RuntimeCatUpdate {
@@ -65,6 +68,8 @@ export interface RuntimeCatUpdate {
   cliConfigArgs?: string[];
   contextBudget?: ContextBudget | null;
   ocProviderName?: string | null;
+  embeddedAcpExecutablePath?: string | null;
+  embeddedAcpConfig?: EmbeddedAcpConfig | null;
   available?: boolean;
 }
 
@@ -99,6 +104,16 @@ function normalizeCoCreatorMentionPatterns(mentionPatterns: readonly string[]): 
     .filter((pattern) => pattern.length > 0)
     .map((pattern) => (pattern.startsWith('@') ? pattern : `@${pattern}`));
   return Array.from(new Set(values));
+}
+
+function resolveEmbeddedAcpExecutablePath(
+  executablePath?: string | null,
+  embeddedAcpConfig?: EmbeddedAcpConfig | null,
+): string | undefined {
+  const direct = executablePath?.trim();
+  if (direct) return direct;
+  const fromConfig = embeddedAcpConfig?.executablePath?.trim();
+  return fromConfig || undefined;
 }
 
 function readOrBootstrapCatalog(projectRoot: string): CatCafeConfig {
@@ -199,6 +214,10 @@ function findBreedVariant(catalog: CatCafeConfig, catId: string): BreedVariantLo
 
 function createBreedFromInput(input: RuntimeCatInput): CatBreed {
   const variantId = `${input.catId}-default`;
+  const embeddedAcpExecutablePath = resolveEmbeddedAcpExecutablePath(
+    input.embeddedAcpExecutablePath,
+    input.embeddedAcpConfig,
+  );
   return {
     id: input.breedId?.trim() || input.catId,
     catId: createCatId(input.catId),
@@ -225,6 +244,8 @@ function createBreedFromInput(input: RuntimeCatInput): CatBreed {
         ...(input.cliConfigArgs && input.cliConfigArgs.length > 0 ? { cliConfigArgs: input.cliConfigArgs } : {}),
         ...(input.contextBudget ? { contextBudget: input.contextBudget } : {}),
         ...(input.ocProviderName ? { ocProviderName: input.ocProviderName } : {}),
+        ...(embeddedAcpExecutablePath ? { embeddedAcpExecutablePath } : {}),
+        ...(input.embeddedAcpConfig ? { embeddedAcpConfig: input.embeddedAcpConfig } : {}),
         ...(input.personality != null && input.personality.trim().length > 0 ? { personality: input.personality } : {}),
         ...(input.teamStrengths != null && input.teamStrengths.trim().length > 0
           ? { teamStrengths: input.teamStrengths.trim() }
@@ -416,6 +437,25 @@ export function updateRuntimeCat(projectRoot: string, catId: string, patch: Runt
       variant.ocProviderName = patch.ocProviderName;
     } else {
       delete variant.ocProviderName;
+    }
+  }
+  if (patch.embeddedAcpExecutablePath !== undefined) {
+    const nextExecutablePath = resolveEmbeddedAcpExecutablePath(patch.embeddedAcpExecutablePath, patch.embeddedAcpConfig);
+    if (nextExecutablePath) {
+      variant.embeddedAcpExecutablePath = nextExecutablePath;
+    } else {
+      delete variant.embeddedAcpExecutablePath;
+    }
+  }
+  if (patch.embeddedAcpConfig !== undefined) {
+    if (patch.embeddedAcpConfig) {
+      variant.embeddedAcpConfig = patch.embeddedAcpConfig;
+      const nextExecutablePath = resolveEmbeddedAcpExecutablePath(patch.embeddedAcpExecutablePath, patch.embeddedAcpConfig);
+      if (nextExecutablePath) variant.embeddedAcpExecutablePath = nextExecutablePath;
+      else if (patch.embeddedAcpExecutablePath === null) delete variant.embeddedAcpExecutablePath;
+    } else {
+      delete variant.embeddedAcpConfig;
+      if (patch.embeddedAcpExecutablePath === null) delete variant.embeddedAcpExecutablePath;
     }
   }
   if (patch.available !== undefined && catalog.version === 2) {

@@ -1,4 +1,16 @@
 import type { RelayClawWsFrame } from '@cat-cafe/shared';
+// @ts-expect-error - ws declarations are not installed in this workspace
+import { WebSocket as NodeWebSocket } from 'ws';
+
+type RelayClawWebSocketCtor = typeof WebSocket;
+
+export function resolveRelayClawWebSocketCtor(): RelayClawWebSocketCtor {
+  return (globalThis.WebSocket ?? NodeWebSocket) as unknown as RelayClawWebSocketCtor;
+}
+
+function relayClawWebSocketOpenState(): number {
+  return resolveRelayClawWebSocketCtor().OPEN;
+}
 
 export class FrameQueue {
   private queue: (RelayClawWsFrame | null)[] = [];
@@ -53,11 +65,11 @@ export class RelayClawConnectionManager implements RelayClawConnection {
 
   constructor(options: RelayClawConnectionManagerOptions) {
     this.requestQueues = options.requestQueues;
-    this.wsFactory = options.wsFactory ?? ((url) => new WebSocket(url));
+    this.wsFactory = options.wsFactory ?? ((url) => new (resolveRelayClawWebSocketCtor())(url));
   }
 
   async ensureConnected(url: string, signal?: AbortSignal): Promise<void> {
-    if (this.ws?.readyState === WebSocket.OPEN && this.serverReady) return;
+    if (this.ws?.readyState === relayClawWebSocketOpenState() && this.serverReady) return;
     if (this.connectPromise) {
       await this.connectPromise;
       return;
@@ -71,11 +83,11 @@ export class RelayClawConnectionManager implements RelayClawConnection {
   }
 
   isOpen(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN && this.serverReady;
+    return this.ws?.readyState === relayClawWebSocketOpenState() && this.serverReady;
   }
 
   send(payload: unknown): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== relayClawWebSocketOpenState()) {
       throw new Error('WebSocket not connected');
     }
     this.ws.send(JSON.stringify(payload));

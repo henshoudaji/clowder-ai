@@ -53,10 +53,9 @@ export const HUB_GROUPS: HubGroup[] = [
     label: '监控与治理',
     icon: 'activity',
     color: '#5B9BD5',
-    preview: '治理 · 健康 · 救援 · 命令速查',
+    preview: '治理 · 救援 · 命令速查',
     tabs: [
       { id: 'governance', label: '治理看板', icon: 'shield' },
-      { id: 'health', label: '健康', icon: 'heart-pulse' },
       { id: 'rescue', label: '布偶猫救援', icon: 'activity' },
       { id: 'commands', label: '命令速查', icon: 'terminal' },
     ],

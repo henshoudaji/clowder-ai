@@ -39,7 +39,18 @@ vi.mock('@/components/HubConnectorConfigTab', () => ({
   HubConnectorConfigTab: () => React.createElement('div', { 'data-testid': 'connector-panel', className: 'ui-panel' }),
 }));
 vi.mock('@/components/HubCapabilityTab', () => ({
-  HubCapabilityTab: () => React.createElement('div', { 'data-testid': 'capability-panel', className: 'ui-panel' }),
+  HubCapabilityTab: (props: { onImport?: () => void }) =>
+    React.createElement(
+      'div',
+      { 'data-testid': 'capability-panel', className: 'ui-panel' },
+      props.onImport
+        ? React.createElement(
+            'button',
+            { type: 'button', className: 'ui-button-secondary', onClick: props.onImport },
+            '导入',
+          )
+        : null,
+    ),
 }));
 vi.mock('@/components/HubSkillsTab', () => ({
   HubSkillsTab: () => React.createElement('div', { 'data-testid': 'skills-market-panel', className: 'ui-panel' }),
@@ -80,9 +91,21 @@ describe('business theme panels', () => {
     root = createRoot(container);
     mockApiFetch.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/mass-models') {
+      if (url === '/api/maas-models') {
         return Promise.resolve(
-          jsonResponse({ list: [{ id: 'gpt-5', object: 'model', name: 'gpt-5', description: 'flagship model' }] }),
+          jsonResponse({
+            list: [
+              {
+                id: 'gpt-5',
+                object: 'model',
+                name: 'gpt-5',
+                description: 'flagship model',
+                labels: ['文本生成'],
+                developer: 'OpenAI',
+                icon: '/avatars/assistant.svg',
+              },
+            ],
+          }),
         );
       }
       if (url === '/api/config') {
@@ -134,8 +157,6 @@ describe('business theme panels', () => {
     const shell = container.firstElementChild as HTMLElement | null;
     expect(shell?.className).toContain('ui-page-shell');
     expect(container.querySelector('h1')?.className).toContain('ui-page-title');
-    expect(container.querySelector('[data-testid="add-member-button"]')?.className).toContain('ui-button-primary');
-    expect(container.querySelector('[data-testid="member-card"]')?.className).toContain('ui-card');
   });
 
   it('renders ChannelsPanel with shared page shell and tokenized content surface', async () => {

@@ -167,7 +167,7 @@ Before:                              After:
 - **🧠 Thinking**：保持独立折叠区块，不混入 CLI Output Block
 - **`?export=true`**：全部展开（复用现有 `expandInExport` 逻辑）
 
-**Rename scope**：Phase A 只改 runtime chat UI（`ChatMessage.tsx` 及新建 `CliOutputBlock.tsx`）；`story-export`、课件、archive 里的"心里话"先不改，避免 scope 膨胀。
+**Rename scope**：Phase A 只改 runtime chat UI（`ChatMessage.tsx` 及新建 `CliOutputBlock.tsx`）；课件、archive 里的"心里话"先不改，避免 scope 膨胀。
 
 ### Phase B: 消息聚合 + 时序穿插（可选，team lead确认后再做）
 
@@ -186,7 +186,7 @@ Before:                              After:
 - [x] AC-A6: 自动收起仅作用于"系统展开且用户未手动操作"的 block
 - [x] AC-A7: `?export=true` 时全部展开；用户手动展开过的 block 不受 auto-collapse 影响
 - [x] AC-A8: 内层 CLI block 用深色 terminal substrate + monospace，外层保留品种配色
-- [x] AC-A9: Rename scope 限于 runtime chat UI，不改 story-export/课件/archive
+- [x] AC-A9: Rename scope 限于 runtime chat UI，不改课件/archive
 - [x] AC-A10: CliOutputBlock 接受 `CliEvent[]` 统一接口，Phase A 前端做适配层（toolEvents+content → CliEvent[]），Phase B 换数据源时组件零改动
 
 ### Phase B（消息聚合 + 时序穿插，可选）

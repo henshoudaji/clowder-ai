@@ -6,7 +6,8 @@
 
 .card {
   display: flex;
-  min-height: 224px;
+  justify-content: space-between;
+  min-height: 194px;
   flex-direction: column;
   gap: var(--space-7);
   border: var(--border-width-default) solid var(--border-default);
@@ -18,11 +19,6 @@
     border-color 200ms ease,
     box-shadow 200ms ease,
     background-color 200ms ease;
-}
-
-.card:hover {
-  border-color: var(--border-accent);
-  box-shadow: var(--shadow-card-hover);
 }
 
 .header {
@@ -55,52 +51,16 @@
 }
 
 .footer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-5);
   margin-top: auto;
-}
-
-.source {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  font-size: var(--font-size-sm);
-  line-height: 18px;
-  color: var(--text-muted);
-}
-
-.sourceMark {
-  display: inline-flex;
-  height: 28px;
-  width: 28px;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  color: var(--text-secondary);
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-pill);
-  padding: 6px 10px;
-  font-size: var(--font-size-sm);
-  line-height: 1;
-  font-weight: var(--font-weight-medium);
 }
 
 .installButton {
   display: inline-flex;
   min-height: var(--control-height-touch);
-  min-width: 92px;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-pill);
-  padding: 0 16px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   line-height: 1;
   font-weight: var(--font-weight-medium);
   transition:
@@ -113,47 +73,22 @@
   color: var(--text-accent);
 }
 
-.installButtonPrimary:hover {
-  background: var(--accent-soft-strong);
+.installButtonSuccess {
+  color: var(--text-disabled);
 }
 
 .installButtonMuted {
-  border: var(--border-width-default) solid var(--border-default);
-  background: var(--surface-card-muted);
   color: var(--text-muted);
-}
-
-.artwork {
-  position: relative;
-  height: var(--control-height-touch);
-  width: var(--control-height-touch);
-  flex-shrink: 0;
-  overflow: hidden;
-  border: var(--border-width-default) solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: linear-gradient(180deg, var(--surface-card) 0%, var(--surface-card-muted) 100%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-card) 88%, transparent);
-}
-
-.artworkSvg {
-  position: absolute;
-  inset: 0;
-  height: 100%;
-  width: 100%;
 }
 
 @media (min-width: 1024px) {
   .skillGrid {
     gap: var(--space-8);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 640px) {
-  .description {
-    min-height: 66px;
-    -webkit-line-clamp: 3;
-  }
-
   .installButton {
     min-height: var(--control-height-xs);
   }

@@ -3,8 +3,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { resolveCatCafeHostRoot } from '../../../../utils/cat-cafe-root.js';
-import { loadInstalledRegistry } from './InstalledSkillRegistry.js';
 import { parseFrontmatterString } from './frontmatter-parser.js';
+import { loadInstalledRegistry } from './InstalledSkillRegistry.js';
 
 interface BootstrapEntry {
   name: string;
@@ -196,7 +196,7 @@ async function parseBootstrap(skillsRoot: string): Promise<Map<string, Bootstrap
       if (rowMatch?.[1]) {
         result.set(rowMatch[1], {
           name: rowMatch[1],
-          category: currentCategory || '未分类',
+          category: currentCategory || '其他',
           trigger: rowMatch[2]?.trim() ?? '',
         });
       }
@@ -236,7 +236,11 @@ async function parseManifestSkillMeta(skillsRoot: string): Promise<Map<string, S
   return result;
 }
 
-function normalizeTriggers(frontmatter: SkillMeta, manifest: SkillMeta | undefined, bootstrap: BootstrapEntry | undefined): string[] {
+function normalizeTriggers(
+  frontmatter: SkillMeta,
+  manifest: SkillMeta | undefined,
+  bootstrap: BootstrapEntry | undefined,
+): string[] {
   if (manifest?.triggers?.length) return manifest.triggers;
   if (frontmatter.triggers?.length) return frontmatter.triggers;
   if (bootstrap?.trigger) return [bootstrap.trigger];
@@ -259,7 +263,10 @@ function addQueryVariant(variants: Set<string>, value: string): void {
     variants.add(token);
   }
   if (normalized.includes('-')) {
-    for (const part of normalized.split('-').map((item) => item.trim()).filter(Boolean)) {
+    for (const part of normalized
+      .split('-')
+      .map((item) => item.trim())
+      .filter(Boolean)) {
       variants.add(part);
     }
   }
@@ -355,7 +362,7 @@ async function buildResolvedSkillEntries(options?: SkillCatalogServiceOptions): 
         name,
         description: manifest?.description ?? frontmatter.description ?? '',
         triggers: normalizeTriggers(frontmatter, manifest, bootstrap),
-        category: bootstrap?.category ?? (source === 'skillhub' ? 'SkillHub' : '未分类'),
+        category: bootstrap?.category ?? (source === 'skillhub' ? 'SkillHub' : '其他'),
         source,
         contentHash: computeContentHash(skillMarkdown),
         skillDir,
@@ -426,10 +433,7 @@ export function createSkillCatalogService(options?: SkillCatalogServiceOptions) 
             .sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name))
             .map((entry) => entry.skill)
         : resolved;
-      const limited =
-        input?.limit && input.limit > 0
-          ? filtered.slice(0, input.limit)
-          : filtered;
+      const limited = input?.limit && input.limit > 0 ? filtered.slice(0, input.limit) : filtered;
       return {
         skills: limited.map(({ skillDir: _skillDir, skillMarkdown: _skillMarkdown, ...skill }) => skill),
         total: filtered.length,

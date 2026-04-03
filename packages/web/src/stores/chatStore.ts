@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   ChatMessageMetadata,
   ChatMessagePatch,
+  DeliveryMode,
   GameState,
   QueueEntry,
   RichBlock,
@@ -14,6 +15,7 @@ import type {
   ThreadState,
   TokenUsage,
   ToolEvent,
+  WhisperOptions,
 } from './chat-types';
 import { DEFAULT_THREAD_STATE } from './chat-types';
 
@@ -24,6 +26,7 @@ export type {
   ChatMessage,
   ChatMessageMetadata,
   ChatMessagePatch,
+  DeliveryMode,
   EvidenceData,
   EvidenceResultData,
   GameState,
@@ -42,6 +45,7 @@ export type {
   ThreadState,
   TokenUsage,
   ToolEvent,
+  WhisperOptions,
 } from './chat-types';
 export { DEFAULT_THREAD_STATE } from './chat-types';
 
@@ -269,6 +273,33 @@ function updateThreadMessage(
 
 // ── Store interface ──
 
+export type PendingNewThreadSend = {
+  requestId: string;
+  content: string;
+  createdAt: number;
+  images?: File[];
+  whisper?: WhisperOptions;
+  deliveryMode?: DeliveryMode;
+  targetThreadId?: string;
+};
+
+function snapshotPendingNewThreadSendPayload(
+  payload: Omit<PendingNewThreadSend, 'targetThreadId'>,
+): Omit<PendingNewThreadSend, 'targetThreadId'> {
+  return {
+    ...payload,
+    ...(payload.images ? { images: [...payload.images] } : {}),
+    ...(payload.whisper
+      ? {
+          whisper: {
+            ...payload.whisper,
+            whisperTo: [...payload.whisper.whisperTo],
+          },
+        }
+      : {}),
+  };
+}
+
 interface ChatState {
   // Per-thread state (flat — reflects the active thread for backward compat)
   messages: ChatMessage[];
@@ -313,6 +344,7 @@ interface ChatState {
   _pendingAckCount: Record<string, number>;
   threads: Thread[];
   isLoadingThreads: boolean;
+  pendingNewThreadSend: PendingNewThreadSend | null;
   /** UI: Whether Thinking blocks should be expanded by default (global preference). */
   uiThinkingExpandedByDefault: boolean;
 
@@ -483,6 +515,10 @@ interface ChatState {
   // ── F63-AC15: Code-to-chat reference ──
   pendingChatInsert: { threadId: string; text: string } | null;
   setPendingChatInsert: (insert: { threadId: string; text: string } | null) => void;
+  setPendingNewThreadSend: (payload: Omit<PendingNewThreadSend, 'targetThreadId'>) => void;
+  attachPendingNewThreadTarget: (threadId: string) => void;
+  consumePendingNewThreadSend: (threadId: string) => PendingNewThreadSend | null;
+  clearPendingNewThreadSend: () => void;
 
   // ── Hub modal (F12) ──
   hubState: { open: boolean; tab?: string } | null;
@@ -521,6 +557,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _pendingAckCount: {},
   threads: [],
   isLoadingThreads: false,
+  pendingNewThreadSend: null,
   uiThinkingExpandedByDefault: loadUiThinkingExpandedByDefault(),
 
   setUiThinkingExpandedByDefault: (next) => {
@@ -739,6 +776,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // ── F63-AC15: Code-to-chat reference ──
   pendingChatInsert: null,
   setPendingChatInsert: (insert) => set({ pendingChatInsert: insert }),
+  setPendingNewThreadSend: (payload) => set({ pendingNewThreadSend: snapshotPendingNewThreadSendPayload(payload) }),
+  attachPendingNewThreadTarget: (threadId) =>
+    set((state) => {
+      if (!state.pendingNewThreadSend) return state;
+      return {
+        pendingNewThreadSend: {
+          ...state.pendingNewThreadSend,
+          targetThreadId: threadId,
+        },
+      };
+    }),
+  consumePendingNewThreadSend: (threadId) => {
+    const pending = get().pendingNewThreadSend;
+    if (!pending || pending.targetThreadId !== threadId) return null;
+    set({ pendingNewThreadSend: null });
+    return pending;
+  },
+  clearPendingNewThreadSend: () => set({ pendingNewThreadSend: null }),
 
   hubState: null,
   openHub: (tab) => set({ hubState: { open: true, tab } }),

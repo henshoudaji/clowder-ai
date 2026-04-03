@@ -20,6 +20,19 @@ from dare_framework.security import (
 from dare_framework.tool._internal.governed_tool_gateway import ApprovalInvokeContext
 
 
+_TOOL_OUTPUT_PREVIEW_MAX = 500
+
+
+def _truncate_output(raw: Any, max_len: int = _TOOL_OUTPUT_PREVIEW_MAX) -> str:
+    """Return a string preview of tool output, truncated for event payloads."""
+    if raw is None:
+        return ""
+    text = str(raw)
+    if len(text) > max_len:
+        return text[:max_len] + "…"
+    return text
+
+
 class ToolExecutorAgent(Protocol):
     """Minimal DareAgent contract required by tool-loop execution."""
 
@@ -100,6 +113,7 @@ async def run_tool_loop(
                 "attempt": attempts,
                 "risk_level": risk_level,
                 "requires_approval": requires_approval,
+                "arguments": request.params,
             },
         )
         if before_tool_dispatch.decision in {HookDecision.BLOCK, HookDecision.ASK}:
@@ -288,6 +302,7 @@ async def run_tool_loop(
                 "capability_id": request.capability_id,
                 "attempt": attempts,
                 "policy_decision": policy_decision,
+                "arguments": effective_params,
             },
         )
 
@@ -344,6 +359,7 @@ async def run_tool_loop(
                     "success": getattr(result, "success", True),
                     "attempt": attempts,
                     "policy_decision": policy_decision,
+                    "output": _truncate_output(getattr(result, "output", None)),
                 },
             )
 
@@ -375,6 +391,7 @@ async def run_tool_loop(
                     "evidence_collected": evidence_collected,
                     "duration_ms": (time.perf_counter() - tool_start) * 1000.0,
                     "budget_stats": agent._budget_stats(),
+                    "output": _truncate_output(getattr(result, "output", None)),
                 },
             )
 
@@ -452,6 +469,7 @@ async def run_tool_loop(
                     "evidence_collected": False,
                     "duration_ms": (time.perf_counter() - tool_start) * 1000.0,
                     "budget_stats": agent._budget_stats(),
+                    "output": f"Error: {exc}",
                 },
             )
             return {

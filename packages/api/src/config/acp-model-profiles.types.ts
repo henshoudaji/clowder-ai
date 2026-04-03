@@ -57,6 +57,7 @@ export interface UpdateAcpModelProfileInput {
 
 export interface RuntimeAcpModelProfile extends AcpModelProfileMeta {
   apiKey: string;
+  headers?: Record<string, string>;
 }
 
 export interface AcpModelProfilesMetaFile {

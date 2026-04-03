@@ -29,6 +29,7 @@ const mockStoreState = () => ({
   clearUnread: vi.fn(),
   confirmUnreadAck: vi.fn(),
   armUnreadSuppression: vi.fn(),
+  consumePendingNewThreadSend: vi.fn(() => null),
   splitPaneThreadIds: [],
   setSplitPaneThreadIds: vi.fn(),
   setSplitPaneTarget: vi.fn(),
@@ -91,8 +92,7 @@ vi.mock('@/components/ChatContainerHeader', () => ({
     ),
 }));
 vi.mock('@/components/ThreadSidebar', () => ({
-  ThreadSidebar: (props: { onClose: () => void }) =>
-    React.createElement('div', { 'data-testid': 'sidebar', onClick: props.onClose }, 'Sidebar'),
+  ThreadSidebar: () => React.createElement('div', { 'data-testid': 'sidebar' }, 'Sidebar'),
 }));
 vi.mock('@/components/RightStatusPanel', () => ({ RightStatusPanel: () => null }));
 vi.mock('@/components/MobileStatusSheet', () => ({
@@ -151,14 +151,14 @@ describe('ChatContainer mobile interactions', () => {
     vi.restoreAllMocks();
   });
 
-  it('sidebar is closed by default on mobile', () => {
+  it('sidebar is visible by default on mobile', () => {
     act(() => {
       root.render(React.createElement(ChatContainer, { threadId: 'test-thread' }));
     });
-    expect(container.querySelector('[data-testid="sidebar"]')).toBeNull();
+    expect(container.querySelector('[data-testid="sidebar"]')).toBeTruthy();
   });
 
-  it('opens sidebar overlay when toggle button is clicked', () => {
+  it('keeps sidebar visible when toggle button is clicked and renders no backdrop', () => {
     act(() => {
       root.render(React.createElement(ChatContainer, { threadId: 'test-thread' }));
     });
@@ -167,26 +167,7 @@ describe('ChatContainer mobile interactions', () => {
       toggleBtn.click();
     });
     expect(container.querySelector('[data-testid="sidebar"]')).toBeTruthy();
-    // Backdrop should also appear
-    expect(container.querySelector('[class*="bg-black"]')).toBeTruthy();
-  });
-
-  it('closes sidebar when backdrop is clicked', () => {
-    act(() => {
-      root.render(React.createElement(ChatContainer, { threadId: 'test-thread' }));
-    });
-    // Open sidebar
-    const toggleBtn = container.querySelector('[data-testid="sidebar-toggle"]') as HTMLButtonElement;
-    act(() => {
-      toggleBtn.click();
-    });
-    expect(container.querySelector('[data-testid="sidebar"]')).toBeTruthy();
-    // Click backdrop
-    const backdrop = container.querySelector('[class*="bg-black"]') as HTMLElement;
-    act(() => {
-      backdrop.click();
-    });
-    expect(container.querySelector('[data-testid="sidebar"]')).toBeNull();
+    expect(container.querySelector('[class*="bg-black"]')).toBeNull();
   });
 
   it('mobile status sheet starts closed and opens on trigger', () => {
@@ -205,7 +186,7 @@ describe('ChatContainer mobile interactions', () => {
     expect(statusSheetAfter.getAttribute('data-open')).toBe('true');
   });
 
-  it('auto-opens sidebar on desktop viewport', () => {
+  it('sidebar remains visible on desktop viewport', () => {
     mockMatchMedia(true);
     act(() => {
       root.render(React.createElement(ChatContainer, { threadId: 'test-thread' }));

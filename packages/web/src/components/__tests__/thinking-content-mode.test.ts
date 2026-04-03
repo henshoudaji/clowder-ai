@@ -1,9 +1,7 @@
 /**
  * F097: Thinking UI behavior — updated for CliOutputBlock architecture
- * - 🧠 Thinking: independent collapsible (ThinkingContent)
- * - CLI output (stream content + tools): rendered via CliOutputBlock
- * - Default is COLLAPSED (reduce fatigue)
- * - `Thread.thinkingMode` is cross-cat visibility semantics, NOT UI expansion state
+ * - Thinking: independent collapsible panel
+ * - Tool calls: rendered via CliOutputBlock
  */
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -11,14 +9,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { useChatStore } from '@/stores/chatStore';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-
-// Stub TTS hook (ChatMessage uses it)
 vi.mock('@/hooks/useTts', () => ({
   useTts: () => ({ state: 'idle', synthesize: vi.fn(), activeMessageId: null }),
 }));
-
-// Stub heavy sub-components
-vi.mock('../RichBlocks', () => ({ RichBlocks: () => null }));
 vi.mock('@/hooks/useCatData', () => ({
   useCatData: () => ({
     cats: [],
@@ -27,6 +20,7 @@ vi.mock('@/hooks/useCatData', () => ({
     getCatsByBreed: () => new Map(),
   }),
 }));
+vi.mock('../RichBlocks', () => ({ RichBlocks: () => null }));
 
 const { ChatMessage } = await import('../ChatMessage');
 
@@ -47,7 +41,6 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  // Stable default for each test (independent of localStorage)
   useChatStore.getState().setUiThinkingExpandedByDefault(false);
 });
 
@@ -70,7 +63,7 @@ const thinkingMessage = {
 const getCatById = () => undefined;
 
 describe('ThinkingContent default collapse', () => {
-  it('default: thinking is collapsed, CLI output block is collapsed', () => {
+  it('default: completed thinking is collapsed, completed tool block is collapsed', () => {
     act(() => {
       root.render(
         React.createElement(ChatMessage, {
@@ -80,16 +73,10 @@ describe('ThinkingContent default collapse', () => {
       );
     });
 
-    const buttons = container.querySelectorAll('button');
-    const thinkingButton = Array.from(buttons).find((b) => b.textContent?.includes('Thinking'));
-    const cliButton = Array.from(buttons).find((b) => b.textContent?.includes('CLI Output'));
-
-    expect(thinkingButton).toBeTruthy();
-    expect(cliButton).toBeTruthy();
-
-    // Thinking expanded content should NOT be visible (collapsed)
-    const markdownDivs = container.querySelectorAll('.cli-output-md');
-    expect(markdownDivs.length).toBe(0);
+    const thinkingButton = container.querySelector('[data-testid="thinking-toggle"]');
+    expect(thinkingButton?.textContent).toContain('完成深度思考');
+    expect(container.querySelector('[data-testid="cli-output-toggle"]')).toBeNull();
+    expect(container.querySelector('.thinking-output-body')).toBeNull();
   });
 
   it('global toggle: enabling expands thinking block', () => {
@@ -102,15 +89,33 @@ describe('ThinkingContent default collapse', () => {
       );
     });
 
-    expect(container.querySelectorAll('.cli-output-md').length).toBe(0);
+    expect(container.querySelector('.thinking-output-body')).toBeNull();
 
-    // Flip global preference → should expand thinking (ThinkingContent uses border-l-2)
     act(() => {
       useChatStore.getState().setUiThinkingExpandedByDefault(true);
     });
 
-    // Only 🧠 Thinking uses the border-l-2 style (CliOutputBlock uses terminal substrate)
-    const markdownDivs = container.querySelectorAll('.cli-output-md');
-    expect(markdownDivs.length).toBe(1); // only 🧠 Thinking
+    expect(container.querySelector('.thinking-output-body')).toBeTruthy();
+    expect(container.textContent).toContain('Extended reasoning content here');
+  });
+
+  it('streaming thinking shows in-progress thinking and tool labels', () => {
+    act(() => {
+      root.render(
+        React.createElement(ChatMessage, {
+          message: {
+            ...thinkingMessage,
+            id: 'msg-streaming',
+            isStreaming: true,
+            content: '',
+            toolEvents: [{ id: 't1', type: 'tool_use' as const, label: 'Read foo.ts', timestamp: 1000 }],
+          },
+          getCatById,
+        }),
+      );
+    });
+
+    expect(container.querySelector('[data-testid="thinking-toggle"]')?.textContent).toContain('深度思考中');
+    expect(container.querySelector('[data-testid="cli-output-toggle"]')?.textContent).toContain('正在执行工具调用');
   });
 });

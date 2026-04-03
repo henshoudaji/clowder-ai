@@ -8,6 +8,7 @@ import {
   splitMentionPatterns,
   splitStrengthTags,
 } from './hub-cat-editor.model';
+import { parseProviderEnvText } from './hub-provider-env';
 import { defaultMcpSupportForClient } from './hub-cat-editor.protocols';
 
 function trimText(value: unknown): string {
@@ -58,7 +59,7 @@ export function buildContextBudget(form: HubCatEditorFormState) {
   };
 }
 
-export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | null) {
+export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | null): Record<string, unknown> {
   const contextBudget = buildContextBudget(form);
   const hasExistingBudget = Boolean(cat?.contextBudget);
   const contextBudgetPatch =
@@ -76,6 +77,27 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
         : {};
   const mcpSupportPatch =
     cat && form.client !== cat.provider ? { mcpSupport: defaultMcpSupportForClient(form.client) } : {};
+  const embeddedAcpEnv = parseProviderEnvText(form.embeddedAcpEnvText ?? '');
+  const embeddedAcpConfigValue = {
+    ...(trimText(form.embeddedAcpExecutablePath) ? { executablePath: trimText(form.embeddedAcpExecutablePath) } : {}),
+    ...(splitCommandArgs(form.embeddedAcpArgs ?? '').length > 0
+      ? { args: splitCommandArgs(form.embeddedAcpArgs ?? '') }
+      : {}),
+    ...(trimText(form.embeddedAcpCwd) ? { cwd: trimText(form.embeddedAcpCwd) } : {}),
+    ...(embeddedAcpEnv ? { env: embeddedAcpEnv } : {}),
+  };
+  const hasEmbeddedAcpConfig = Object.keys(embeddedAcpConfigValue).length > 0;
+  const embeddedAcpExecutablePathPatch =
+    trimText(form.embeddedAcpExecutablePath)
+      ? { embeddedAcpExecutablePath: trimText(form.embeddedAcpExecutablePath) }
+      : cat?.embeddedAcpExecutablePath
+        ? { embeddedAcpExecutablePath: null as null }
+        : {};
+  const embeddedAcpConfigPatch = hasEmbeddedAcpConfig
+    ? { embeddedAcpConfig: embeddedAcpConfigValue }
+    : cat?.embeddedAcpConfig
+      ? { embeddedAcpConfig: null as null }
+      : {};
   const common = {
     displayName,
     nickname: trimText(form.nickname),
@@ -115,6 +137,8 @@ export function buildCatPayload(form: HubCatEditorFormState, cat?: CatData | nul
     client: form.client,
     ...accountRefPatch,
     ...mcpSupportPatch,
+    ...embeddedAcpExecutablePathPatch,
+    ...embeddedAcpConfigPatch,
     defaultModel: trimText(form.defaultModel),
     cliConfigArgs: (form.cliConfigArgs ?? []).filter((arg) => arg.trim().length > 0),
     ...(trimText(form.ocProviderName)

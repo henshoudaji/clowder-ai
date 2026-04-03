@@ -25,7 +25,7 @@ beforeEach(() => {
   mockLocalStorage.clear();
   vi.clearAllMocks();
   useThemeStore.setState({
-    theme: 'default',
+    theme: 'business',
     isLoaded: false,
   });
 });
@@ -34,7 +34,7 @@ describe('themeStore', () => {
   it('keeps theme runtime state without embedding style config objects', () => {
     const state = useThemeStore.getState() as unknown as Record<string, unknown>;
 
-    expect(state.theme).toBe('default');
+    expect(state.theme).toBe('business');
     expect(state.isLoaded).toBe(false);
     expect('config' in state).toBe(false);
   });
@@ -48,5 +48,15 @@ describe('themeStore', () => {
     expect(state.theme).toBe('business');
     expect(state.isLoaded).toBe(true);
     expect('config' in state).toBe(false);
+  });
+
+  it('migrates legacy default theme storage to business', () => {
+    mockStorage['clowder-ai-theme'] = 'default';
+
+    useThemeStore.getState().initializeTheme();
+
+    const state = useThemeStore.getState() as unknown as Record<string, unknown>;
+    expect(state.theme).toBe('business');
+    expect(mockLocalStorage.setItem).toHaveBeenCalledWith('clowder-ai-theme', 'business');
   });
 });

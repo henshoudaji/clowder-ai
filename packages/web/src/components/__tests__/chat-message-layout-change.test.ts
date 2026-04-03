@@ -77,9 +77,7 @@ describe('ChatMessage layout-change event timing', () => {
       );
     });
 
-    const thinkingToggle = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Thinking'),
-    );
+    const thinkingToggle = container.querySelector('[data-testid="thinking-toggle"]');
     expect(thinkingToggle).toBeTruthy();
 
     act(() => {
@@ -134,9 +132,7 @@ describe('ChatMessage layout-change event timing', () => {
     });
 
     // F097: now uses CliOutputBlock summary line instead of ToolEventsPanel
-    const cliToggle = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('CLI Output'),
-    );
+    const cliToggle = container.querySelector('[data-testid="cli-output-toggle"]');
     expect(cliToggle).toBeTruthy();
 
     act(() => {

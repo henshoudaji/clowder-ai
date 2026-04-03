@@ -1,6 +1,6 @@
 ---
 feature_ids: [F059]
-related_features: [F042, F046, F086, F087, F090, F116]
+related_features: [F042, F046, F086, F087, F116]
 topics: [open-source, governance, community]
 doc_kind: feature-spec
 created: 2026-03-04
@@ -352,7 +352,7 @@ MIT 下别人可商用。三猫共识：
 
 ## Dependencies
 
-- **Related**: F042/F046/F086/F087/F090（开源边界与治理约束来源）
+- **Related**: F042/F046/F086/F087（开源边界与治理约束来源）
 - 无硬依赖，但 F056（设计语言）完成后 UI 组件更稳定，开源质量更高
 
 ## Risk

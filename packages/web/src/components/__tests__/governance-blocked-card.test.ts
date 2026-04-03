@@ -70,6 +70,7 @@ describe('GovernanceBlockedCard', () => {
   });
 
   it('calls confirm then retry on button click', async () => {
+    const onResolved = vi.fn();
     mockApiFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
@@ -80,6 +81,7 @@ describe('GovernanceBlockedCard', () => {
           projectPath: '/test/proj',
           reasonKind: 'needs_bootstrap',
           invocationId: 'inv-456',
+          onResolved,
         }),
       );
     });
@@ -101,9 +103,11 @@ describe('GovernanceBlockedCard', () => {
 
     expect(container.textContent).toContain('治理初始化完成');
     expect(container.textContent).toContain('已自动重试');
+    expect(onResolved).toHaveBeenCalledTimes(1);
   });
 
   it('skips retry when invocationId is not provided', async () => {
+    const onResolved = vi.fn();
     mockApiFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
 
     act(() => {
@@ -111,6 +115,7 @@ describe('GovernanceBlockedCard', () => {
         React.createElement(GovernanceBlockedCard, {
           projectPath: '/test/proj',
           reasonKind: 'needs_bootstrap',
+          onResolved,
         }),
       );
     });
@@ -123,9 +128,11 @@ describe('GovernanceBlockedCard', () => {
     expect(mockApiFetch).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('治理初始化完成');
     expect(container.textContent).not.toContain('已自动重试');
+    expect(onResolved).toHaveBeenCalledTimes(1);
   });
 
   it('shows error and retry button on confirm failure', async () => {
+    const onResolved = vi.fn();
     mockApiFetch.mockResolvedValueOnce({
       ok: false,
       json: async () => ({ error: 'Path not allowed' }),
@@ -137,6 +144,7 @@ describe('GovernanceBlockedCard', () => {
           projectPath: '/test/proj',
           reasonKind: 'needs_bootstrap',
           invocationId: 'inv-789',
+          onResolved,
         }),
       );
     });
@@ -150,6 +158,33 @@ describe('GovernanceBlockedCard', () => {
     const retryButton = container.querySelector('button');
     expect(retryButton).toBeTruthy();
     expect(retryButton?.textContent).toContain('重试');
+    expect(onResolved).not.toHaveBeenCalled();
+  });
+
+  it('keeps the card when retry fails after bootstrap succeeds', async () => {
+    const onResolved = vi.fn();
+    mockApiFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'retry failed' }) });
+
+    act(() => {
+      root.render(
+        React.createElement(GovernanceBlockedCard, {
+          projectPath: '/test/proj',
+          reasonKind: 'needs_bootstrap',
+          invocationId: 'inv-retry-fail',
+          onResolved,
+        }),
+      );
+    });
+
+    const button = container.querySelector('button')!;
+    await act(async () => {
+      button.click();
+    });
+
+    expect(container.textContent).toContain('retry failed');
+    expect(onResolved).not.toHaveBeenCalled();
   });
 
   it('extracts directory name from Windows backslash path', () => {

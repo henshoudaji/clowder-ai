@@ -95,6 +95,60 @@ export const postMessageInputSchema = {
     ),
 };
 
+const postMessageRuntimeInputSchema = z.object({
+  content: z.string().trim().min(1).max(50000),
+  threadId: z.string().trim().min(1).optional(),
+  replyTo: z.string().trim().min(1).optional(),
+  clientMessageId: z.string().trim().min(1).max(200).optional(),
+  targetCats: z.array(z.string().trim().min(1)).optional(),
+});
+
+function normalizeOptionalString(value: unknown): string | undefined | unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeTargetCats(value: unknown): string[] | undefined | unknown {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : undefined;
+  }
+  return value;
+}
+
+function normalizePostMessageInput(input: {
+  content?: unknown;
+  message?: unknown;
+  text?: unknown;
+  threadId?: unknown;
+  replyTo?: unknown;
+  clientMessageId?: unknown;
+  targetCats?: unknown;
+}): {
+  content: unknown;
+  threadId?: unknown;
+  replyTo?: unknown;
+  clientMessageId?: unknown;
+  targetCats?: unknown;
+} {
+  const rawContent = typeof input.content === 'string' ? input.content : input.message ?? input.text ?? input.content;
+  const normalizedContent = typeof rawContent === 'string' ? rawContent.trim() : rawContent;
+  return {
+    content: normalizedContent,
+    threadId: normalizeOptionalString(input.threadId),
+    replyTo: normalizeOptionalString(input.replyTo),
+    clientMessageId: normalizeOptionalString(input.clientMessageId),
+    targetCats: normalizeTargetCats(input.targetCats),
+  };
+}
+
 export const getPendingMentionsInputSchema = {
   includeAcked: z
     .boolean()
@@ -212,20 +266,32 @@ export const loadSkillInputSchema = {
 };
 
 export async function handlePostMessage(input: {
-  content: string;
-  threadId?: string | undefined;
-  replyTo?: string | undefined;
-  clientMessageId?: string | undefined;
-  targetCats?: string[] | undefined;
+  content?: unknown;
+  message?: unknown;
+  text?: unknown;
+  threadId?: unknown;
+  replyTo?: unknown;
+  clientMessageId?: unknown;
+  targetCats?: unknown;
 }): Promise<ToolResult> {
+  const normalizedInput = normalizePostMessageInput(input);
+  const parsedInput = postMessageRuntimeInputSchema.safeParse(normalizedInput);
+  if (!parsedInput.success) {
+    const issues = parsedInput.error.issues
+      .map((issue) => `${issue.path.join('.') || 'input'}: ${issue.message}`)
+      .join('; ');
+    return errorResult(`Invalid input for cat_cafe_post_message: ${issues}`);
+  }
+
+  const validatedInput = parsedInput.data;
   const result = await callbackPost(
     '/api/callbacks/post-message',
     {
-      content: input.content,
-      ...(input.threadId ? { threadId: input.threadId } : {}),
-      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
-      clientMessageId: input.clientMessageId ?? randomUUID(),
-      ...(input.targetCats?.length ? { targetCats: input.targetCats } : {}),
+      content: validatedInput.content,
+      ...(validatedInput.threadId ? { threadId: validatedInput.threadId } : {}),
+      ...(validatedInput.replyTo ? { replyTo: validatedInput.replyTo } : {}),
+      clientMessageId: validatedInput.clientMessageId ?? randomUUID(),
+      ...(validatedInput.targetCats?.length ? { targetCats: validatedInput.targetCats } : {}),
     },
     { enableOutbox: true },
   );
@@ -251,7 +317,7 @@ export async function handlePostMessage(input: {
   // If post-message failed and content contains @mentions,
   // hint that text-based @mention is always available.
   // Only mention credential issues when the error actually looks like auth failure.
-  if (result.isError && /[@＠]/.test(input.content)) {
+  if (result.isError && /[@＠]/.test(validatedInput.content)) {
     const original = (result.content[0] as { text: string }).text;
     const lower = original.toLowerCase();
     const looksLikeCredentialFailure =

@@ -1,3 +1,4 @@
+import { resolveEmbeddedRuntimeKind } from '@cat-cafe/shared';
 import type { CatData } from '@/hooks/useCatData';
 import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
 import type { CatStrategyEntry, StrategyType } from './hub-strategy-types';
@@ -28,6 +29,10 @@ export interface HubCatEditorFormState {
   commandArgs: string;
   cliConfigArgs: string[];
   ocProviderName: string;
+  embeddedAcpExecutablePath?: string;
+  embeddedAcpArgs: string;
+  embeddedAcpCwd: string;
+  embeddedAcpEnvText: string;
   sessionChain: SessionChainValue;
   maxPromptTokens: string;
   maxContextTokens: string;
@@ -101,6 +106,14 @@ export const CODEX_AUTH_MODE_OPTIONS: Array<{ value: CodexAuthMode; label: strin
 
 export const DEFAULT_ANTIGRAVITY_COMMAND_ARGS = '. --remote-debugging-port=9000';
 const HUAWEI_MAAS_MODEL_SOURCE_ID = 'huawei-maas';
+
+export function hasEmbeddedAcpRuntime(cat?: Pick<CatData, 'id' | 'provider' | 'source' | 'embeddedRuntimeKind'> | null): boolean {
+  if (!cat) return false;
+  return (
+    cat.embeddedRuntimeKind === 'agentteams_acp' ||
+    resolveEmbeddedRuntimeKind({ id: cat.id, provider: cat.provider, source: cat.source }) === 'agentteams_acp'
+  );
+}
 
 export function splitMentionPatterns(raw: string): string[] {
   return raw
@@ -224,7 +237,22 @@ export function builtinAccountIdForClient(client: ClientValue): string | null {
   }
 }
 
-export function filterAccounts(client: ClientValue, profiles: ProfileItem[]): ProfileItem[] {
+export function filterAccounts(
+  client: ClientValue,
+  profiles: ProfileItem[],
+  options?: { embeddedAcpRuntime?: boolean },
+): ProfileItem[] {
+  if (options?.embeddedAcpRuntime) {
+    return profiles.filter((profile) => {
+      if (profile.source === 'model_config') {
+        return profile.protocol === 'openai' || profile.protocol === 'huawei_maas';
+      }
+      return profile.kind !== 'acp' && profile.authType === 'api_key' && profile.protocol === 'openai';
+    });
+  }
+  if (client === 'acp') {
+    return profiles.filter((profile) => profile.kind === 'acp');
+  }
   const modelConfigProfiles = profiles.filter(isModelConfigProfile);
   if (modelConfigProfiles.length > 0) {
     if (client !== 'dare' && client !== 'relayclaw') return [];
@@ -232,9 +260,6 @@ export function filterAccounts(client: ClientValue, profiles: ProfileItem[]): Pr
       if (profile.id === HUAWEI_MAAS_MODEL_SOURCE_ID && profile.protocol === 'huawei_maas') return true;
       return profile.protocol === 'openai';
     });
-  }
-  if (client === 'acp') {
-    return profiles.filter((profile) => profile.kind === 'acp');
   }
   if (client === 'relayclaw') {
     return profiles.filter((profile) => profile.authType === 'api_key' && profile.protocol === 'openai');
@@ -255,6 +280,7 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
   const createDraft = !cat ? draft : null;
   const catId = cat?.id ?? '';
   const mentionPatterns = cat?.mentionPatterns ?? (catId ? [canonicalMentionPattern(catId)] : []);
+  const embeddedAcpConfig = cat?.embeddedAcpConfig;
   return {
     catId,
     name: cat?.name ?? cat?.displayName ?? '',
@@ -276,6 +302,14 @@ export function initialState(cat?: CatData | null, draft?: HubCatEditorDraft | n
     commandArgs: cat?.commandArgs?.join(' ') ?? createDraft?.commandArgs ?? '',
     cliConfigArgs: [...(cat?.cliConfigArgs ?? [])],
     ocProviderName: cat?.ocProviderName ?? '',
+    embeddedAcpExecutablePath: embeddedAcpConfig?.executablePath ?? cat?.embeddedAcpExecutablePath ?? '',
+    embeddedAcpArgs: embeddedAcpConfig?.args?.join(' ') ?? '',
+    embeddedAcpCwd: embeddedAcpConfig?.cwd ?? '',
+    embeddedAcpEnvText: embeddedAcpConfig?.env
+      ? Object.entries(embeddedAcpConfig.env)
+          .map(([key, value]) => `${key}=${value}`)
+          .join('\n')
+      : '',
     sessionChain: String(cat?.sessionChain ?? true) as SessionChainValue,
     maxPromptTokens: cat?.contextBudget ? String(cat.contextBudget.maxPromptTokens) : '',
     maxContextTokens: cat?.contextBudget ? String(cat.contextBudget.maxContextTokens) : '',

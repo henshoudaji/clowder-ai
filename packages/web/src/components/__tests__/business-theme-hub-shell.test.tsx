@@ -36,6 +36,16 @@ async function flushEffects() {
   });
 }
 
+async function changeInputValue(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
 describe('business theme hub shell', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -69,6 +79,18 @@ describe('business theme hub shell', () => {
                 mounts: { codex: true },
                 connectionStatus: 'connected',
               },
+              {
+                id: 'doc-skill',
+                type: 'skill',
+                source: 'external',
+                enabled: true,
+                cats: { office: true },
+                description: 'document helper',
+                triggers: ['doc'],
+                category: 'Knowledge',
+                mounts: { codex: true },
+                connectionStatus: 'connected',
+              },
             ],
             skillHealth: {
               allMounted: true,
@@ -94,15 +116,68 @@ describe('business theme hub shell', () => {
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
 
-  it('renders HubCapabilityTab with shared token controls and cards', async () => {
+  it('renders HubCapabilityTab capability cards without project selector', async () => {
     await act(async () => {
       root.render(React.createElement(HubCapabilityTab));
     });
     await flushEffects();
 
-    const addButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('添加模型'));
-    expect(addButton?.className).toContain('ui-button-primary');
-    expect(container.querySelector('select')?.className).toContain('ui-field');
+    expect(container.querySelector('select[aria-label="项目"]')).toBeNull();
+    expect(container.querySelector('select[aria-label="筛选来源"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('项目:');
     expect(container.querySelector('[data-testid="capability-card-skill-ops-skill"]')?.className).toContain('ui-card');
+    expect(container.textContent).toContain('来源：官方');
+  });
+
+  it('renders search input under title and filters installed skills', async () => {
+    await act(async () => {
+      root.render(React.createElement(HubCapabilityTab));
+    });
+    await flushEffects();
+
+    const searchInput = container.querySelector('input[aria-label="搜索我的技能"]') as HTMLInputElement | null;
+    expect(searchInput).not.toBeNull();
+    expect(container.textContent).toContain('ops-skill');
+    expect(container.textContent).toContain('doc-skill');
+
+    await changeInputValue(searchInput!, 'doc');
+
+    expect(container.textContent).toContain('doc-skill');
+    expect(container.textContent).not.toContain('ops-skill');
+  });
+
+  it('renders optional import action beside installed skills search', async () => {
+    const onImport = vi.fn();
+    await act(async () => {
+      root.render(React.createElement(HubCapabilityTab, { onImport }));
+    });
+    await flushEffects();
+
+    const searchInput = container.querySelector('input[aria-label="搜索我的技能"]');
+    const importButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('导入'));
+    expect(searchInput).not.toBeNull();
+    expect(importButton?.className).toContain('ui-button-secondary');
+    await act(async () => {
+      importButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onImport).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps filter controls visible and shows empty state when search has no matches', async () => {
+    await act(async () => {
+      root.render(React.createElement(HubCapabilityTab));
+    });
+    await flushEffects();
+
+    const searchInput = container.querySelector('input[aria-label="搜索我的技能"]') as HTMLInputElement | null;
+    expect(searchInput).not.toBeNull();
+
+    await changeInputValue(searchInput!, 'no-such-skill');
+
+    expect(container.querySelector('select[aria-label="筛选来源"]')).not.toBeNull();
+    expect(container.querySelector('input[aria-label="搜索我的技能"]')).not.toBeNull();
+    expect(container.textContent).toContain('未找到匹配技能');
+    expect(container.textContent).not.toContain('ops-skill');
+    expect(container.textContent).not.toContain('doc-skill');
   });
 });

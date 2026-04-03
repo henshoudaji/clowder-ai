@@ -87,7 +87,7 @@ export function transformRelayClawChunk(
 
     case 'chat.processing_status': {
       const status = payload.is_processing ? (payload.current_task ?? 'thinking') : 'idle';
-      return msg('system_info', catId, `[processing] ${status}`);
+      return msg('system_info', catId, JSON.stringify({ type: 'processing_status', status }));
     }
 
     case 'chat.ask_user_question': {

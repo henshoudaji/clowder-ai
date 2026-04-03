@@ -7,9 +7,11 @@ export interface VersionUpdateModalProps {
 }
 
 interface VersionInfo {
-  latest_version: string;
+  curversion: string;
+  lastversion: string;
   description: string;
-  download_url: string;
+  downloadUrl?: string;
+  download_url?: string;
 }
 
 const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({ open, onCancel }) => {
@@ -18,13 +20,32 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({ open, onCancel 
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const currentVersion = typeof window !== 'undefined' ? process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0' : '1.0.0';
+  const normalizeVersion = (version: string): number[] =>
+    version
+      .trim()
+      .replace(/^[^\d]*/, '')
+      .split(/[.\-+_]/)
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isFinite(part) ? part : 0));
+
+  const compareVersions = (a: string, b: string): number => {
+    const aParts = normalizeVersion(a);
+    const bParts = normalizeVersion(b);
+    const maxLen = Math.max(aParts.length, bParts.length);
+    for (let i = 0; i < maxLen; i += 1) {
+      const aVal = aParts[i] ?? 0;
+      const bVal = bParts[i] ?? 0;
+      if (aVal > bVal) return 1;
+      if (aVal < bVal) return -1;
+    }
+    return 0;
+  };
 
   const checkVersion = async () => {
     setIsLoading(true);
     try {
       const res = await apiFetch('/api/lastversion');
-      const data = await res.json();
+      const data = (await res.json()) as VersionInfo;
       setVersionInfo(data);
     } catch (error) {
       console.error('获取版本信息失败:', error);
@@ -47,10 +68,15 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({ open, onCancel 
     }
   }, [open]);
 
-  const hasNewVersion = versionInfo && versionInfo.latest_version > currentVersion;
+  const currentVersion = versionInfo?.curversion ?? '';
+  const hasNewVersion =
+    !!versionInfo?.lastversion &&
+    !!versionInfo?.curversion &&
+    compareVersions(versionInfo.lastversion, versionInfo.curversion) > 0;
 
   const handleDownload = () => {
-    if (!versionInfo?.download_url) return;
+    const downloadUrl = versionInfo?.downloadUrl || versionInfo?.download_url || '';
+    if (!downloadUrl) return;
     setIsDownloading(true);
     let progress = 0;
     const interval = setInterval(() => {
@@ -59,7 +85,7 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({ open, onCancel 
       if (progress >= 100) {
         clearInterval(interval);
         setIsDownloading(false);
-        window.open(versionInfo.download_url, '_blank');
+        window.open(downloadUrl, '_blank');
       }
     }, 200);
   };
@@ -82,14 +108,14 @@ const VersionUpdateModal: React.FC<VersionUpdateModalProps> = ({ open, onCancel 
         </button>
         <div className="p-8">
           <div className="flex justify-center mb-6">
-            <img src="/image/version.svg" alt="版本更新" className="w-[100px] h-[100px] object-contain" />
+            <img src="/images/version.svg" alt="版本更新" className="w-[100px] h-[100px] object-contain" />
           </div>
 
           <div className="mb-2">
             {isLoading ? (
               <span className="text-base font-bold">检查版本中...</span>
             ) : hasNewVersion ? (
-              <span className="text-base font-bold">发现新版本 {versionInfo?.latest_version}</span>
+              <span className="text-base font-bold">发现新版本 {versionInfo?.lastversion}</span>
             ) : (
               <span className="text-base font-bold">暂无新版本</span>
             )}

@@ -3,7 +3,7 @@
  * 三只 AI 猫猫的类型定义和配置
  */
 
-import type { ContextBudget } from './cat-breed.js';
+import type { ContextBudget, EmbeddedAcpConfig } from './cat-breed.js';
 import type { CatId, SessionId } from './ids.js';
 import { createCatId } from './ids.js';
 
@@ -38,6 +38,27 @@ export type CatStatus = 'idle' | 'thinking' | 'working' | 'error' | 'offline';
 export interface CatColor {
   readonly primary: string;
   readonly secondary: string;
+}
+
+export type EmbeddedRuntimeKind = 'agentteams_acp';
+
+const EMBEDDED_RUNTIME_SEEDS: Readonly<Record<string, { provider: string; kind: EmbeddedRuntimeKind }>> = {
+  agentteams: { provider: 'acp', kind: 'agentteams_acp' },
+};
+
+export function resolveEmbeddedRuntimeKind(input: {
+  id?: string | null;
+  provider?: string | null;
+  source?: string | null;
+}): EmbeddedRuntimeKind | null {
+  if (input.source === 'runtime') return null;
+  const entry = input.id ? EMBEDDED_RUNTIME_SEEDS[input.id] : undefined;
+  if (!entry) return null;
+  return entry.kind;
+}
+
+export function usesEmbeddedAcpRuntime(input: { id?: string | null; provider?: string | null; source?: string | null }): boolean {
+  return resolveEmbeddedRuntimeKind(input) === 'agentteams_acp';
 }
 
 /**
@@ -80,6 +101,10 @@ export interface CatConfig {
   readonly cliConfigArgs?: readonly string[];
   /** F189: OpenCode custom provider name for api_key routing (runtime assembles provider/model). */
   readonly ocProviderName?: string;
+  /** Embedded ACP runtime executable override (relative paths resolve from project root). */
+  readonly embeddedAcpExecutablePath?: string;
+  /** Embedded ACP runtime command/env/model overrides. */
+  readonly embeddedAcpConfig?: EmbeddedAcpConfig;
 }
 
 /**

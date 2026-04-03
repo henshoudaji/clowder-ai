@@ -1,18 +1,21 @@
-import type { Thread } from '@/stores/chat-types';
+﻿import type { Thread } from '@/stores/chat-types';
 import { getRecentThreads, splitIntoActiveAndArchived } from './active-workspace';
 
 export function formatRelativeTime(ts: number, compact = false): string {
-  const diff = Date.now() - ts;
-  if (compact) {
-    if (diff < 60_000) return '刚刚';
-    if (diff < 3600_000) return `${Math.floor(diff / 60_000)}分`;
-    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}时`;
-    return `${Math.floor(diff / 86400_000)}天`;
-  }
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}分钟前`;
-  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}小时前`;
-  return `${Math.floor(diff / 86400_000)}天前`;
+  if (!Number.isFinite(ts) || ts <= 0) return '-';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '-';
+  const now = new Date();
+  const isSameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  if (!isSameDay) return `${mm}/${dd}`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${min}`;
 }
 
 export function projectDisplayName(path: string): string {
@@ -61,7 +64,7 @@ function sortByUnreadThenActive(a: Thread, b: Thread, unreadIds?: Set<string>): 
 }
 
 /**
- * Sort and group threads into: pinned → project groups → favorites.
+ * Sort and group threads into: pinned 鈫?project groups 鈫?favorites.
  * Excludes the "default" thread (lobby) which is rendered separately.
  * Within each group: unread threads first, then by lastActiveAt descending.
  */
@@ -73,7 +76,7 @@ export function sortAndGroupThreads(threads: Thread[], unreadIds?: Set<string>):
     .filter((t) => t.pinned && t.id !== 'default')
     .sort((a, b) => sortByUnreadThenActive(a, b, unreadIds));
   if (pinned.length > 0) {
-    groups.push({ type: 'pinned', label: '置顶', threads: pinned });
+    groups.push({ type: 'pinned', label: '缃《', threads: pinned });
   }
 
   // 2. Regular threads grouped by project (each group sorted)
@@ -93,7 +96,7 @@ export function sortAndGroupThreads(threads: Thread[], unreadIds?: Set<string>):
     .filter((t) => t.favorited && !t.pinned && t.id !== 'default')
     .sort((a, b) => sortByUnreadThenActive(a, b, unreadIds));
   if (favorited.length > 0) {
-    groups.push({ type: 'favorites', label: '收藏', threads: favorited });
+    groups.push({ type: 'favorites', label: '鏀惰棌', threads: favorited });
   }
 
   return groups;
@@ -111,7 +114,7 @@ const DEFAULT_CONFIG: WorkspaceConfig = {
 
 /**
  * Sort and group threads with active workspace layout:
- * pinned → recent → active projects → archived-container → favorites
+ * pinned 鈫?recent 鈫?active projects 鈫?archived-container 鈫?favorites
  */
 export function sortAndGroupThreadsWithWorkspace(
   threads: Thread[],
@@ -127,7 +130,7 @@ export function sortAndGroupThreadsWithWorkspace(
     .filter((t) => t.pinned && t.id !== 'default')
     .sort((a, b) => sortByUnreadThenActive(a, b, unreadIds));
   if (pinned.length > 0) {
-    groups.push({ type: 'pinned', label: '置顶', threads: pinned });
+    groups.push({ type: 'pinned', label: '缃《', threads: pinned });
   }
 
   // 2. Recent threads (cross-project, excluding pinned/default)
@@ -162,7 +165,7 @@ export function sortAndGroupThreadsWithWorkspace(
     const allArchivedThreads = archived.flatMap((g) => g.threads);
     groups.push({
       type: 'archived-container',
-      label: `其他项目 (${archived.length})`,
+      label: `鍏朵粬椤圭洰 (${archived.length})`,
       threads: allArchivedThreads,
       archivedGroups: archived,
     });
@@ -173,7 +176,7 @@ export function sortAndGroupThreadsWithWorkspace(
     .filter((t) => t.favorited && !t.pinned && t.id !== 'default')
     .sort((a, b) => sortByUnreadThenActive(a, b, unreadIds));
   if (favorited.length > 0) {
-    groups.push({ type: 'favorites', label: '收藏', threads: favorited });
+    groups.push({ type: 'favorites', label: '鏀惰棌', threads: favorited });
   }
 
   return groups;
@@ -196,3 +199,4 @@ function groupByProject(threads: Thread[], unreadIds?: Set<string>): [string, Th
     return a.localeCompare(b);
   });
 }
+

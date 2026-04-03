@@ -88,7 +88,10 @@ test('Windows offline bundle builder deploys production packages and bundles Win
   assert.match(buildScript, /const esbuildCommand = resolveLocalEsbuildCommand\(\)/);
   assert.match(buildScript, /'--bundle'/);
   assert.match(buildScript, /'--format=esm'/);
-  assert.match(buildScript, /API_RUNTIME_EXTERNAL_DEPENDENCIES\.map\(\(dependency\) => `--external:\$\{dependency\}`\)/);
+  assert.match(
+    buildScript,
+    /API_RUNTIME_EXTERNAL_DEPENDENCIES\.map\(\(dependency\) => `--external:\$\{dependency\}`\)/,
+  );
   assert.match(buildScript, /createRequire as __createRequire/);
   assert.match(buildScript, /fileURLToPath as __fileURLToPath/);
   assert.match(buildScript, /const __dirname = __pathDirname\(__filename\)/);
@@ -110,7 +113,10 @@ test('Windows offline bundle builder deploys production packages and bundles Win
   assert.match(buildScript, /rmSync\(join\(targetDir, 'node_modules'\), \{ recursive: true, force: true \}\)/);
   assert.match(buildScript, /copyIfPresent\(WEB_BUILD_STATIC_DIR, join\(targetDir, '\.next', 'static'\)\)/);
   assert.match(buildScript, /copyIfPresent\(join\(sourceDir, '\.next'\), join\(targetDir, '\.next'\)\)/);
-  assert.match(buildScript, /copyIfPresent\(join\(sourceDir, 'next\.config\.js'\), join\(targetDir, 'next\.config\.js'\)\)/);
+  assert.match(
+    buildScript,
+    /copyIfPresent\(join\(sourceDir, 'next\.config\.js'\), join\(targetDir, 'next\.config\.js'\)\)/,
+  );
   assert.match(
     buildScript,
     /writeJson\(join\(targetDir, 'package\.json'\), createStandaloneWebRuntimePackageJson\(join\(repoRoot, 'packages', 'web', 'package\.json'\)\)\)/,
@@ -124,6 +130,35 @@ test('Windows offline bundle builder deploys production packages and bundles Win
   assert.match(buildScript, /buildVendoredJiuwenClawExecutable\(options\)/);
   assert.match(buildScript, /stageVendoredJiuwenClawExecutable\(bundleDir, jiuwenClawExecutable\)/);
   assert.match(buildScript, /cpSync\(executablePath, join\(vendorDir, 'jiuwenclaw\.exe'\), \{ force: true \}\)/);
+  assert.match(buildScript, /'install-python-wheelhouse\.ps1'/);
+  assert.match(buildScript, /'manual-install-windows-runtime-wheelhouse\.ps1'/);
+  assert.match(buildScript, /const DEFAULT_WHEELHOUSE_DIR = join\(repoRoot, 'dist', 'windows-python-wheelhouse'\)/);
+  assert.match(
+    buildScript,
+    /const PYTHON_WHEELHOUSE_CONFIG = join\(repoRoot, 'packaging', 'windows', 'python-runtime-wheelhouse\.json'\)/,
+  );
+  assert.match(buildScript, /function writePythonRuntimePth\(targetDir, options = \{\}\)/);
+  assert.match(buildScript, /writePythonRuntimePth\(targetDir, \{ includeVendorPaths: false \}\)/);
+  assert.match(buildScript, /function resolveStagedWindowsPythonWheelhouse\(\)/);
+  assert.match(buildScript, /function stageWindowsPythonWheelhouse\(\)/);
+  assert.match(buildScript, /logStep\('Preparing Python wheelhouse'\)/);
+  assert.match(buildScript, /pythonWheelhouse = stageWindowsPythonWheelhouse\(\)/);
+  assert.match(buildScript, /pythonWheelhouse = resolveStagedWindowsPythonWheelhouse\(\)/);
+  assert.match(buildScript, /stageInstallerSeed\(bundleDir, pythonWheelhouse\)/);
+  assert.match(
+    buildScript,
+    /cpSync\(wheelhouse\.manifestPath, join\(seedDir, 'python-wheelhouse-manifest\.json'\), \{ force: true \}\)/,
+  );
+  assert.match(
+    buildScript,
+    /cpSync\(wheelhouseSource, join\(seedDir, 'wheelhouse'\), \{ recursive: true, force: true \}\)/,
+  );
+  assert.match(
+    buildScript,
+    /if \(entry\.name\.endsWith\('\\.egg-info'\) \|\| entry\.name\.endsWith\('\\.dist-info'\)\) continue;/,
+  );
+  assert.doesNotMatch(buildScript, /__pycache__/);
+  assert.doesNotMatch(buildScript, /entry\.name\.endsWith\('\\.pyc'\)/);
   assert.match(buildScript, /run\('pnpm', \['--filter', '@cat-cafe\/shared', 'run', 'build'\]\)/);
   assert.match(buildScript, /shell: options\.shell \?\? shouldUseCommandShell\(command\)/);
   assert.match(buildScript, /materializeSharedDependency\(bundlePackagesDir, packageName\)/);
@@ -232,7 +267,10 @@ test('Windows startup script pins bundled config roots for packaged releases', (
   assert.match(startWindowsScript, /\$runtimeEnvOverrides\.CAT_CAFE_CONFIG_ROOT = \$ProjectRoot/);
   assert.match(startWindowsScript, /\$runtimeEnvOverrides\.CAT_TEMPLATE_PATH = \$bundledTemplatePath/);
   assert.match(startWindowsScript, /\$webStandaloneServer = Join-Path \$ProjectRoot "packages\/web\/server\.js"/);
-  assert.match(startWindowsScript, /\$usingStandaloneWebRuntime = \(-not \$Dev\) -and \(Test-Path \$webStandaloneServer\)/);
+  assert.match(
+    startWindowsScript,
+    /\$usingStandaloneWebRuntime = \(-not \$Dev\) -and \(Test-Path \$webStandaloneServer\)/,
+  );
   assert.match(startWindowsScript, /Starting Frontend \(port \$WebPort, standalone\)/);
   assert.match(startWindowsScript, /\$env:HOSTNAME = "0\.0\.0\.0"/);
 });

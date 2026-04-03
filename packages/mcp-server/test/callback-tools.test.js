@@ -72,6 +72,48 @@ describe('MCP Callback Tools', () => {
     assert.equal(body.callbackToken, 'test-token');
   });
 
+  test('handlePostMessage normalizes message alias and single targetCats string', async () => {
+    const { handlePostMessage } = await import('../dist/tools/callback-tools.js');
+
+    let capturedOptions;
+    globalThis.fetch = async (_url, options) => {
+      capturedOptions = options;
+      return {
+        ok: true,
+        json: async () => ({ status: 'ok' }),
+      };
+    };
+
+    const result = await handlePostMessage({
+      message: 'Hello via message alias',
+      targetCats: 'codex',
+    });
+
+    assert.equal(result.isError, undefined);
+    const body = JSON.parse(capturedOptions.body);
+    assert.equal(body.content, 'Hello via message alias');
+    assert.deepEqual(body.targetCats, ['codex']);
+  });
+
+  test('handlePostMessage rejects invalid payload before callback request', async () => {
+    const { handlePostMessage } = await import('../dist/tools/callback-tools.js');
+
+    let fetchCalled = false;
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      return {
+        ok: true,
+        json: async () => ({ status: 'ok' }),
+      };
+    };
+
+    const result = await handlePostMessage({ content: '' });
+
+    assert.equal(result.isError, true);
+    assert.ok(result.content[0].text.includes('Invalid input for cat_cafe_post_message'));
+    assert.equal(fetchCalled, false);
+  });
+
   test('handlePostMessage forwards optional threadId for cross-thread posting', async () => {
     const { handlePostMessage } = await import('../dist/tools/callback-tools.js');
 

@@ -57,14 +57,6 @@ export type {
   ThreadPhase,
   UpdateBacklogDispatchProgressInput,
 } from './backlog.js';
-// Brake types (F085 Phase 4 — 平台级健康守护)
-export type {
-  BrakeCheckinRequest,
-  BrakeCheckinResponse,
-  BrakeEvent,
-  BrakeSettings,
-  BrakeState,
-} from './brake.js';
 // Capability types (F041 统一能力模型)
 export type {
   BootstrapAction,
@@ -93,14 +85,16 @@ export type {
   CatColor,
   CatConfig,
   CatProvider,
-  KnownCatProvider,
   CatState,
   CatStatus,
+  KnownCatProvider,
 } from './cat.js';
 export {
   CAT_CONFIGS,
   findCatByMention,
   getAllCatIds,
+  resolveEmbeddedRuntimeKind,
+  usesEmbeddedAcpRuntime,
 } from './cat.js';
 // Cat breed/variant types (Breed+Variant two-layer schema)
 export type {
@@ -111,6 +105,7 @@ export type {
   CatFeatures,
   CatVariant,
   CliConfig,
+  EmbeddedAcpConfig,
   // F067: Co-Creator config for @ mention routing
   CoCreatorConfig,
   ContextBudget,
@@ -122,6 +117,7 @@ export type {
 } from './cat-breed.js';
 // Connector types (F97 外部信息源抽象)
 export type {
+  ConnectorAgentConfig,
   ConnectorDefinition,
   ConnectorSource,
   ConnectorTailwindTheme,
@@ -281,13 +277,6 @@ export type {
   RefluxCategory,
   RefluxPattern,
 } from './reflux.js';
-// Resolution types (F076 Phase 2 — 风险消解)
-export type {
-  AnswerResolutionInput,
-  CreateResolutionInput,
-  ResolutionItem,
-  ResolutionStatus,
-} from './resolution.js';
 // RelayClaw types (relay-claw WebSocket agent bridge)
 export type {
   RelayClawAgentConfig,
@@ -295,6 +284,13 @@ export type {
   RelayClawEventType,
   RelayClawWsFrame,
 } from './relayclaw.js';
+// Resolution types (F076 Phase 2 — 风险消解)
+export type {
+  AnswerResolutionInput,
+  CreateResolutionInput,
+  ResolutionItem,
+  ResolutionStatus,
+} from './resolution.js';
 // Rich block types (F22 Rich Blocks 富消息系统)
 export type {
   InteractiveOption,

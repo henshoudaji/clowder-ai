@@ -17,6 +17,14 @@ function buildMentionToCat(cats: Array<{ id: string; mentionPatterns: string[] }
   );
 }
 
+function buildMentionLabel(
+  cats: Array<{ mentionPatterns: string[]; displayName: string }>,
+): Record<string, string> {
+  return Object.fromEntries(
+    cats.flatMap((cat) => cat.mentionPatterns.map((p) => [p.replace(/^@/, '').toLowerCase(), `@${cat.displayName}`])),
+  );
+}
+
 function buildMentionRe(toCat: Record<string, string>): RegExp {
   const aliases = Object.keys(toCat).sort((a, b) => b.length - a.length);
   if (aliases.length === 0) return /(?!)/g; // never-match fallback
@@ -31,6 +39,7 @@ function buildMentionColor(cats: Array<{ id: string; color: { primary: string } 
 
 // ── Co-Creator (铲屎官) ───────────────────────────────────
 const CO_CREATOR_ID = '__co-creator__';
+const CO_CREATOR_DISPLAY_NAME = '铲屎官';
 const CO_CREATOR_COLOR = '#F5A623'; // warm gold
 const DEFAULT_CO_CREATOR_MENTION_PATTERNS = ['@co-creator', '@铲屎官'];
 
@@ -38,6 +47,7 @@ const DEFAULT_CO_CREATOR_MENTION_PATTERNS = ['@co-creator', '@铲屎官'];
 
 const staticCats = Object.entries(CAT_CONFIGS).map(([id, c]) => ({
   id,
+  displayName: c.displayName,
   mentionPatterns: [...c.mentionPatterns],
   color: { primary: c.color.primary },
 }));
@@ -48,6 +58,7 @@ let _coCreatorMentionPatterns = [...DEFAULT_CO_CREATOR_MENTION_PATTERNS];
 let _mentionToCat = buildMentionToCat([]);
 let _mentionRe = buildMentionRe(_mentionToCat);
 let _mentionColor = buildMentionColor([]);
+let _mentionLabel = buildMentionLabel([]);
 
 function normalizeCoCreatorMentionPatterns(mentionPatterns: readonly string[]): string[] {
   const normalized = mentionPatterns
@@ -62,6 +73,7 @@ function normalizeCoCreatorMentionPatterns(mentionPatterns: readonly string[]): 
 function rebuildMentionCache(): void {
   const ownerEntry = {
     id: CO_CREATOR_ID,
+    displayName: CO_CREATOR_DISPLAY_NAME,
     mentionPatterns: _coCreatorMentionPatterns,
     color: { primary: CO_CREATOR_COLOR },
   };
@@ -69,6 +81,7 @@ function rebuildMentionCache(): void {
   _mentionToCat = buildMentionToCat(all);
   _mentionRe = buildMentionRe(_mentionToCat);
   _mentionColor = buildMentionColor(all);
+  _mentionLabel = buildMentionLabel(all);
 }
 
 rebuildMentionCache();
@@ -100,6 +113,11 @@ export function getMentionToCat(): Record<string, string> {
 /** Map catId → primary color hex (e.g. "#9B7EBD") */
 export function getMentionColor(): Record<string, string> {
   return _mentionColor;
+}
+
+/** Map mention alias (lowercase, no @) → rendered label (e.g. "@办公助理") */
+export function getMentionLabel(): Record<string, string> {
+  return _mentionLabel;
 }
 
 export function resetMentionDataForTest(): void {

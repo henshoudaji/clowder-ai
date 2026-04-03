@@ -21,20 +21,8 @@ internal static class Program
     [DllImport("shcore.dll", SetLastError = true)]
     private static extern int SetProcessDpiAwareness(int awareness);
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsIconic(IntPtr hWnd);
-
-    private const int SW_RESTORE = 9;
-    private const int SW_SHOW = 5;
+    private const string InstanceMutexName = @"Local\OfficeClaw.WebView2Desktop";
+    private const string ActivationEventName = @"Local\OfficeClaw.WebView2Desktop.Activate";
 
     private static void EnableHighDpi()
     {
@@ -50,54 +38,92 @@ internal static class Program
         }
     }
 
-    private static void ActivateExistingInstance()
-    {
-        var hWnd = FindWindow(null, "OfficeClaw");
-        if (hWnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        if (IsIconic(hWnd))
-        {
-            ShowWindow(hWnd, SW_RESTORE);
-        }
-        else
-        {
-            ShowWindow(hWnd, SW_SHOW);
-        }
-
-        SetForegroundWindow(hWnd);
-    }
 
     [STAThread]
     private static void Main()
     {
         EnableHighDpi();
 
-        bool createdNew;
-        using (var mutex = new Mutex(true, @"Local\OfficeClaw.WebView2Desktop", out createdNew))
+        EventWaitHandle activationEvent;
+        try
         {
-            if (!createdNew)
-            {
-                ActivateExistingInstance();
-                return;
-            }
+            activationEvent = EventWaitHandle.OpenExisting(ActivationEventName);
+        }
+        catch (WaitHandleCannotBeOpenedException)
+        {
+            activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
+        }
 
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new LauncherForm());
+        using (activationEvent)
+        {
+            bool createdNew;
+            using (var mutex = new Mutex(true, InstanceMutexName, out createdNew))
+            {
+                if (!createdNew)
+                {
+                    activationEvent.Set();
+                    return;
+                }
+
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new LauncherForm(activationEvent));
+            }
         }
     }
 }
 
 internal sealed class LauncherForm : Form
 {
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPlacement(IntPtr hWnd, [In] ref WINDOWPLACEMENT lpwndpl);
+
+    private const int SW_RESTORE = 9;
+    private const int SW_SHOWMINIMIZED = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPLACEMENT
+    {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public POINT ptMinPosition;
+        public POINT ptMaxPosition;
+        public RECT rcNormalPosition;
+    }
+
     private readonly object _logLock = new object();
     private readonly NotifyIcon _notifyIcon;
     private readonly Panel _statusPanel;
     private readonly PictureBox _splashBox;
     private readonly System.Windows.Forms.Timer _spinnerTimer;
+    private readonly EventWaitHandle _activationEvent;
+    private readonly RegisteredWaitHandle _activationWaitHandle;
     private readonly string _projectRoot;
     private readonly string _logFilePath;
     private readonly string _runtimeStatePath;
@@ -105,26 +131,40 @@ internal sealed class LauncherForm : Form
     private bool _serviceStartedByLauncher;
     private bool _exitRequested;
     private bool _trayHintShown;
+    private bool _isHiddenToTray;
+    private bool _hasTrayRestorePlacement;
+    private WINDOWPLACEMENT _trayRestorePlacement;
     private string _frontendUrl;
     private string _statusText = "Preparing OfficeClaw...";
     private int _spinnerAngle;
     private WebView2 _webView;
+    private Image _splashImage;
 
-    public LauncherForm()
+    public LauncherForm(EventWaitHandle activationEvent)
     {
+        _activationEvent = activationEvent;
+        _activationWaitHandle = ThreadPool.RegisterWaitForSingleObject(
+            _activationEvent,
+            (_, __) => RestoreFromExternalActivation(),
+            null,
+            Timeout.Infinite,
+            false
+        );
         _projectRoot = ResolveProjectRoot();
         _logFilePath = Path.Combine(_projectRoot, "logs", "desktop-launcher.log");
         _runtimeStatePath = Path.Combine(_projectRoot, ".cat-cafe", "run", "windows", "runtime-state.json");
         Directory.CreateDirectory(Path.GetDirectoryName(_logFilePath) ?? _projectRoot);
         _frontendUrl = BuildFrontendUrl();
 
-        Text = "OfficeClaw";
+        Text = string.Empty;
+        ShowIcon = false;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(960, 640);
         ClientSize = new Size(1440, 960);
         WindowState = FormWindowState.Maximized;
         Icon = ResolveAppIcon();
         _notifyIcon = CreateNotifyIcon();
+        _trayRestorePlacement = CreateEmptyWindowPlacement();
 
         _splashBox = new PictureBox
         {
@@ -137,7 +177,7 @@ internal sealed class LauncherForm : Form
         var splashImagePath = Path.Combine(_projectRoot, "assets", "splash.jpg");
         if (File.Exists(splashImagePath))
         {
-            try { _splashBox.Image = Image.FromFile(splashImagePath); }
+            try { _splashImage = Image.FromFile(splashImagePath); }
             catch { /* fall back to plain background */ }
         }
 
@@ -160,7 +200,11 @@ internal sealed class LauncherForm : Form
         _spinnerTimer.Start();
 
         _splashBox.Controls.Add(_statusPanel);
-        _splashBox.Resize += (_, __) => RepositionStatusLabel();
+        _splashBox.Resize += (_, __) =>
+        {
+            RepositionStatusLabel();
+            _splashBox.Invalidate();
+        };
         Controls.Add(_splashBox);
         RepositionStatusLabel();
         Shown += async (_, __) => await InitializeAsync();
@@ -245,7 +289,7 @@ internal sealed class LauncherForm : Form
     {
         var contextMenu = new ContextMenuStrip();
         contextMenu.ShowImageMargin = false;
-        contextMenu.Items.Add("打开 OfficeClaw", null, (_, __) => RestoreFromTray());
+        contextMenu.Items.Add("打开 OfficeClaw", null, (_, __) => RestoreFromExternalActivation());
         contextMenu.Items.Add("退出", null, (_, __) => RequestExit());
 
         var notifyIcon = new NotifyIcon
@@ -255,12 +299,13 @@ internal sealed class LauncherForm : Form
             Icon = Icon ?? SystemIcons.Application,
             ContextMenuStrip = contextMenu,
         };
-        notifyIcon.DoubleClick += (_, __) => RestoreFromTray();
+        notifyIcon.DoubleClick += (_, __) => RestoreFromExternalActivation();
         return notifyIcon;
     }
 
     private void DisposeNotifyIcon()
     {
+        _activationWaitHandle.Unregister(null);
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
     }
@@ -278,8 +323,58 @@ internal sealed class LauncherForm : Form
         StopManagedServices();
     }
 
+    private static WINDOWPLACEMENT CreateEmptyWindowPlacement()
+    {
+        return new WINDOWPLACEMENT
+        {
+            length = Marshal.SizeOf(typeof(WINDOWPLACEMENT))
+        };
+    }
+
+    private void CaptureTrayRestorePlacement()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        var placement = CreateEmptyWindowPlacement();
+        if (!GetWindowPlacement(Handle, ref placement))
+        {
+            return;
+        }
+
+        if (placement.showCmd == SW_SHOWMINIMIZED)
+        {
+            placement.showCmd = SW_RESTORE;
+        }
+
+        _trayRestorePlacement = placement;
+        _hasTrayRestorePlacement = true;
+    }
+
+    private void RestoreFromTrayPlacement()
+    {
+        if (!_hasTrayRestorePlacement)
+        {
+            ShowWindow(Handle, SW_RESTORE);
+            return;
+        }
+
+        var placement = _trayRestorePlacement;
+        if (placement.showCmd == SW_SHOWMINIMIZED)
+        {
+            placement.showCmd = SW_RESTORE;
+        }
+
+        SetWindowPlacement(Handle, ref placement);
+    }
+
     private void HideToTray()
     {
+        CaptureTrayRestorePlacement();
+
+        _isHiddenToTray = true;
         ShowInTaskbar = false;
         WindowState = FormWindowState.Minimized;
         Hide();
@@ -304,11 +399,46 @@ internal sealed class LauncherForm : Form
             return;
         }
 
-        Show();
+        _isHiddenToTray = false;
         ShowInTaskbar = true;
-        WindowState = FormWindowState.Normal;
+        Show();
+        RestoreFromTrayPlacement();
+        SetForegroundWindow(Handle);
         Activate();
     }
+
+
+    private void RestoreFromExternalActivation()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke((Action)RestoreFromExternalActivation);
+            return;
+        }
+
+        if (_isHiddenToTray)
+        {
+            RestoreFromTray();
+            return;
+        }
+
+        if (WindowState == FormWindowState.Minimized)
+        {
+            ShowInTaskbar = true;
+            ShowWindow(Handle, SW_RESTORE);
+            SetForegroundWindow(Handle);
+            return;
+        }
+
+        if (!Visible)
+        {
+            Show();
+        }
+
+        ShowInTaskbar = true;
+        Activate();
+    }
+
 
     private void RequestExit()
     {
@@ -563,10 +693,10 @@ internal sealed class LauncherForm : Form
         _spinnerTimer.Stop();
         _spinnerTimer.Dispose();
         Controls.Clear();
-        if (_splashBox.Image != null)
+        if (_splashImage != null)
         {
-            _splashBox.Image.Dispose();
-            _splashBox.Image = null;
+            _splashImage.Dispose();
+            _splashImage = null;
         }
         _splashBox.Dispose();
         Controls.Add(_webView);
@@ -691,14 +821,13 @@ internal sealed class LauncherForm : Form
 
     private void OnSplashPaint(object sender, PaintEventArgs eventArgs)
     {
-        var box = (PictureBox)sender;
-        if (box.Image == null)
+        if (_splashImage == null)
         {
             return;
         }
 
-        var img = box.Image;
-        var canvas = box.ClientSize;
+        var img = _splashImage;
+        var canvas = ((Control)sender).ClientSize;
 
         // "Cover" mode: scale to fill, crop the excess
         float scale = Math.Max(

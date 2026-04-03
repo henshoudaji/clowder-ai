@@ -25,7 +25,7 @@ export function CatAvatar({ catId, size = 32, status }: CatAvatarProps) {
 
   return (
     <div
-      className={`rounded-full ring-2 overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center transition-shadow duration-300 ${
+      className={`answer-avatar rounded-full ring-2 overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center transition-shadow duration-300 ${
         isStreaming ? 'animate-pulse' : ''
       }`}
       style={{

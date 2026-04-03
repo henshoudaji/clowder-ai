@@ -42,6 +42,23 @@ export interface CliConfig {
   readonly effort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
 }
 
+export interface EmbeddedAcpConfig {
+  readonly executablePath?: string;
+  readonly args?: readonly string[];
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly provider?: 'openai_compatible' | 'bigmodel' | 'minimax' | 'echo';
+  readonly baseUrl?: string;
+  readonly apiKey?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly sslVerify?: boolean | null;
+  readonly temperature?: number;
+  readonly topP?: number;
+  readonly maxTokens?: number;
+  readonly contextWindow?: number;
+  readonly connectTimeoutSeconds?: number;
+}
+
 /**
  * A specific model/config variant within a breed.
  * e.g. ragdoll breed → opus-4.6 variant, opus-4.5 variant
@@ -93,6 +110,10 @@ export interface CatVariant {
    *  Used with api_key auth — runtime assembles `ocProviderName/defaultModel` for the -m flag
    *  and generates an OPENCODE_CONFIG runtime config file for the provider. */
   readonly ocProviderName?: string;
+  /** Embedded ACP runtime executable override (relative paths resolve from project root). */
+  readonly embeddedAcpExecutablePath?: string;
+  /** Embedded ACP runtime command/env/model overrides. */
+  readonly embeddedAcpConfig?: EmbeddedAcpConfig;
 }
 
 /**

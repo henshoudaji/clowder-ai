@@ -1,20 +1,21 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useCallback, useState } from 'react';
+import { splitCommandArgs } from './hub-cat-editor.model';
 import { parseProviderEnvText } from './hub-provider-env';
 import type { AcpProviderKind } from './hub-provider-profiles.sections';
 import type { AcpModelAccessMode, AcpModelProfileItem, AcpModelProviderType } from './hub-provider-profiles.types';
 
 type EditableAcpModelProvider = AcpModelProviderType | '';
 
-const DEFAULT_ACP_ARGS = 'gateway acp stdio';
-const DEFAULT_ACP_CWD = '/opt/workspace/agent-teams';
+const DEFAULT_ACP_ARGS = '-m agent_teams gateway acp stdio';
 
-function splitCommandArgs(value: string): string[] {
-  return value
-    .split(/\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function resolveDefaultAcpCommand(projectPath: string | null): string {
+  if (!projectPath) return 'tools/python/python.exe';
+  const trimmed = projectPath.replace(/[\\/]+$/, '');
+  const separator = trimmed.includes('\\') ? '\\' : '/';
+  return `${trimmed}${separator}tools${separator}python${separator}python.exe`;
 }
 
 interface CreateSectionsOptions {
@@ -33,9 +34,9 @@ export function useProviderProfilesCreateSections(options: CreateSectionsOptions
   const [createBaseUrl, setCreateBaseUrl] = useState('');
   const [createApiKey, setCreateApiKey] = useState('');
   const [createModels, setCreateModels] = useState<string[]>([]);
-  const [createAcpCommand, setCreateAcpCommand] = useState('agent-teams');
+  const [createAcpCommand, setCreateAcpCommand] = useState(resolveDefaultAcpCommand(options.mutationProjectPath));
   const [createAcpArgs, setCreateAcpArgs] = useState(DEFAULT_ACP_ARGS);
-  const [createAcpCwd, setCreateAcpCwd] = useState(DEFAULT_ACP_CWD);
+  const [createAcpCwd, setCreateAcpCwd] = useState('');
   const [createAcpEnvText, setCreateAcpEnvText] = useState('');
   const [createAcpModelAccessMode, setCreateAcpModelAccessMode] = useState<AcpModelAccessMode>('self_managed');
   const [createAcpModelProfileRef, setCreateAcpModelProfileRef] = useState('');
@@ -46,19 +47,35 @@ export function useProviderProfilesCreateSections(options: CreateSectionsOptions
   const [createAcpModelBaseUrl, setCreateAcpModelBaseUrl] = useState('');
   const [createAcpModelApiKey, setCreateAcpModelApiKey] = useState('');
 
+  useEffect(() => {
+    setCreateAcpCommand((prev) => {
+      const normalizedPrev = prev.trim();
+      if (
+        normalizedPrev.length === 0 ||
+        normalizedPrev === 'agent-teams' ||
+        normalizedPrev === 'tools/python/python.exe' ||
+        /[\\/]tools[\\/]python[\\/]python\.exe$/i.test(normalizedPrev)
+      ) {
+        return resolveDefaultAcpCommand(options.mutationProjectPath);
+      }
+      return prev;
+    });
+    setCreateAcpCwd((prev) => (prev === '/opt/workspace/agent-teams' ? '' : prev));
+  }, [options.mutationProjectPath]);
+
   const resetCreateProfileForm = useCallback(() => {
     setCreateDisplayName('');
     setCreateProtocol('anthropic');
     setCreateBaseUrl('');
     setCreateApiKey('');
     setCreateModels([]);
-    setCreateAcpCommand('agent-teams');
+    setCreateAcpCommand(resolveDefaultAcpCommand(options.mutationProjectPath));
     setCreateAcpArgs(DEFAULT_ACP_ARGS);
-    setCreateAcpCwd(DEFAULT_ACP_CWD);
+    setCreateAcpCwd('');
     setCreateAcpEnvText('');
     setCreateAcpModelAccessMode('self_managed');
     setCreateAcpModelProfileRef('');
-  }, []);
+  }, [options.mutationProjectPath]);
 
   const resetCreateAcpModelForm = useCallback(() => {
     setCreateAcpModelDisplayName('');

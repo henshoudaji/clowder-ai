@@ -14,6 +14,8 @@ interface SectionGroupProps {
   count: number;
   isCollapsed: boolean;
   onToggle: () => void;
+  hideToggle?: boolean;
+  hideCount?: boolean;
   projectPath?: string;
   governanceStatus?: string;
   onToggleProjectPin?: () => void;
@@ -28,6 +30,8 @@ export function SectionGroup({
   count,
   isCollapsed,
   onToggle,
+  hideToggle,
+  hideCount,
   projectPath,
   governanceStatus,
   onToggleProjectPin,
@@ -35,21 +39,23 @@ export function SectionGroup({
   children,
 }: SectionGroupProps) {
   return (
-    <div className="mt-1">
+    <div className="mt-0">
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left px-3 py-1.5 flex items-center gap-1.5 hover:bg-gray-50 transition-colors"
+        className={`w-full text-left px-4 py-1.5 flex items-center gap-1.5 transition-colors ${hideToggle ? 'cursor-default' : 'hover:bg-gray-50'}`}
         title={projectPath && projectPath !== 'default' ? projectPath : undefined}
       >
-        <svg
-          aria-hidden="true"
-          className={`w-3 h-3 text-gray-400 transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-90'}`}
-          viewBox="0 0 12 12"
-          fill="currentColor"
-        >
-          <path d="M4 2l4 4-4 4V2z" />
-        </svg>
+        {!hideToggle && (
+          <svg
+            aria-hidden="true"
+            className={`w-3 h-3 text-gray-400 transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-90'}`}
+            viewBox="0 0 12 12"
+            fill="currentColor"
+          >
+            <path d="M4 2l4 4-4 4V2z" />
+          </svg>
+        )}
         {icon === 'pin' && (
           <svg
             aria-hidden="true"
@@ -95,7 +101,7 @@ export function SectionGroup({
           const dot = governanceStatus ? GOV_STATUS_DOT[governanceStatus] : undefined;
           return dot ? <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot.color}`} title={dot.title} /> : null;
         })()}
-        <span className="text-[10px] text-gray-300 flex-shrink-0 ml-auto">{count}</span>
+        {!hideCount && <span className="text-[10px] text-gray-300 flex-shrink-0 ml-auto">{count}</span>}
         {onToggleProjectPin && (
           <span
             role="button"

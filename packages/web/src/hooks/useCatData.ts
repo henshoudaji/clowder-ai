@@ -28,6 +28,23 @@ export interface CatData {
   commandArgs?: string[];
   cliConfigArgs?: string[];
   ocProviderName?: string;
+  embeddedAcpExecutablePath?: string;
+  embeddedAcpConfig?: {
+    executablePath?: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    provider?: 'openai_compatible' | 'bigmodel' | 'minimax' | 'echo';
+    baseUrl?: string;
+    apiKey?: string;
+    headers?: Record<string, string>;
+    sslVerify?: boolean | null;
+    temperature?: number;
+    topP?: number;
+    maxTokens?: number;
+    contextWindow?: number;
+    connectTimeoutSeconds?: number;
+  };
   contextBudget?: {
     maxPromptTokens: number;
     maxContextTokens: number;
@@ -49,6 +66,7 @@ export interface CatData {
   breedDisplayName?: string;
   /** F127: Seed cats come from cat-template.json; runtime cats are added later */
   source: 'seed' | 'runtime';
+  embeddedRuntimeKind?: 'agentteams_acp';
   /** F127: Roster metadata used by Hub ownership/lead markers */
   roster?: {
     family: string;
@@ -126,12 +144,15 @@ function normalizeCats(rawCats: unknown[]): CatData[] {
       avatar: cat.avatar ?? '',
       roleDescription: cat.roleDescription ?? '',
       personality: cat.personality ?? '',
+      embeddedAcpExecutablePath: cat.embeddedAcpExecutablePath,
+      embeddedAcpConfig: cat.embeddedAcpConfig,
       teamStrengths: cat.teamStrengths,
       caution: cat.caution,
       strengths: Array.isArray(cat.strengths) ? cat.strengths : undefined,
       sessionChain: cat.sessionChain,
       roster: cat.roster ?? null,
       source: cat.source ?? 'seed',
+      embeddedRuntimeKind: cat.embeddedRuntimeKind,
     };
   });
 }

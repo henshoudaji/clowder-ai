@@ -7,5 +7,5 @@ export function appendThinkingChunk(
 ): string {
   if (!existing) return chunk;
   if (!chunk) return existing;
-  return strategy === 'append' ? `${existing}${chunk}` : `${existing}\n\n---\n\n${chunk}`;
+  return strategy === 'append' ? `${existing}${chunk}` : `${existing}\n\n${chunk}`;
 }

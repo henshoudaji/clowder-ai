@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { type CatOption, GAME_LIST, WEREWOLF_MODES } from './chat-input-options';
@@ -55,6 +55,8 @@ const MODE_ICONS: Record<string, (props: { className?: string }) => React.ReactN
 interface ChatInputMenusProps {
   catOptions: CatOption[];
   showMentions: boolean;
+  mentionFilter: string;
+  onMentionFilterChange: (value: string) => void;
   showGameMenu: boolean;
   gameStep: 'list' | 'modes';
   onGameStepChange: (step: 'list' | 'modes') => void;
@@ -68,6 +70,8 @@ interface ChatInputMenusProps {
 export function ChatInputMenus({
   catOptions,
   showMentions,
+  mentionFilter,
+  onMentionFilterChange,
   showGameMenu,
   gameStep,
   onGameStepChange,
@@ -110,46 +114,61 @@ export function ChatInputMenus({
       {showMentions && (
         <div
           ref={menuRef}
-          className="absolute bottom-full left-4 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden w-64 z-10 max-h-80 flex flex-col"
+          className="absolute bottom-full left-4 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden w-[200px] z-10 flex flex-col p-2"
         >
-          <div ref={scrollRef} className="overflow-y-auto flex-1">
+          <div className="px-1 pt-0 pb-2">
+            <div className="relative">
+              <svg
+                className="pointer-events-none absolute left-0 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
+              </svg>
+              <input
+                value={mentionFilter}
+                onChange={(e) => onMentionFilterChange(e.target.value)}
+                placeholder="请输入关键字搜索"
+                className="w-full border-0 border-b border-gray-300 bg-transparent py-1 pl-6 pr-0 text-sm text-[#191919] outline-none focus:border-[#191919]"
+              />
+            </div>
+          </div>
+          <div ref={scrollRef} className="max-h-[220px] overflow-y-auto flex-1 border-0">
             {catOptions.map((opt, i) => (
               <button
                 key={opt.id}
                 ref={i === selectedIdx ? selectedRef : undefined}
-                className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${i === selectedIdx ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                className={`w-full h-[34px] text-left p-2 rounded-[6px] flex items-center gap-2 transition-colors ${i === selectedIdx ? 'bg-[rgba(240,247,255,1)]' : 'hover:bg-[rgba(240,247,255,0.1)]'}`}
                 onMouseEnter={() => onSelectIdx(i)}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   onInsertMention(opt);
                 }}
+                title={opt.label}
               >
                 <img
                   src={opt.avatar}
                   alt={opt.label}
-                  className="w-7 h-7 rounded-full"
+                  className="w-[18px] h-[18px] rounded-full shrink-0"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold" style={{ color: opt.color }}>
-                    {opt.label}
-                  </div>
-                  <div className="text-xs text-gray-400">{opt.desc}</div>
+                <div className="min-w-0 flex-1 truncate text-[12px] leading-[18px] font-normal text-[#191919]">
+                  {opt.label}
                 </div>
               </button>
             ))}
           </div>
           {canScrollDown && (
-            <div className="px-4 py-1 text-[10px] text-gray-400 text-center border-t border-gray-100 bg-gradient-to-t from-white shrink-0">
+            <div className="px-4 py-1 text-[10px] text-gray-400 text-center bg-gradient-to-t from-white shrink-0">
               ↓ 还有更多猫猫
             </div>
           )}
-          {catOptions.length === 0 && <div className="px-4 py-2.5 text-xs text-gray-400">无匹配猫猫</div>}
-          <div className="px-4 py-1.5 text-xs text-gray-300 border-t border-gray-100 shrink-0">
-            {'\u2191\u2193 \u9009\u62E9 \u00B7 Enter \u786E\u8BA4 \u00B7 Esc \u5173\u95ED'}
-          </div>
+          {catOptions.length === 0 && <div className="px-4 py-2.5 text-xs text-gray-400">无匹配智能体</div>}
         </div>
       )}
 
@@ -239,3 +258,4 @@ export function ChatInputMenus({
     </>
   );
 }
+

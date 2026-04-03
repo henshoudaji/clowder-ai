@@ -1,11 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { DEFAULT_THREAD_ID, type IThreadStore } from '../domains/cats/services/stores/ports/ThreadStore.js';
 import type { WeixinAdapter } from '../infrastructure/connectors/adapters/WeixinAdapter.js';
+import type { IConnectorAgentConfigStore } from '../infrastructure/connectors/ConnectorAgentConfigStore.js';
 import type { IConnectorPermissionStore } from '../infrastructure/connectors/ConnectorPermissionStore.js';
 import { resolveHeaderUserId } from '../utils/request-identity.js';
 
 export interface ConnectorHubRoutesOptions {
   threadStore: IThreadStore;
+  /** Agent config store for channel-level multi-agent binding */
+  agentConfigStore?: IConnectorAgentConfigStore | null;
   /**
    * Lazy reference to the WeChat adapter instance.
    * Set after connector gateway starts (which happens post-listen).
@@ -360,5 +363,48 @@ export const connectorHubRoutes: FastifyPluginAsync<ConnectorHubRoutesOptions> =
       for (const g of body.allowedGroups) await store.allowGroup(connectorId, g.externalChatId, g.label);
     }
     return store.getConfig(connectorId);
+  });
+
+  // ── Connector-Agent Binding API ──
+
+  app.get('/api/connector/:connectorId/agents', async (request, reply) => {
+    const userId = requireTrustedHubIdentity(request, reply);
+    if (!userId) return { error: 'Identity required' };
+    const { connectorId } = request.params as { connectorId: string };
+    const store = opts.agentConfigStore;
+    if (!store) {
+      return { connectorId, agentIds: [], primaryAgentId: '' };
+    }
+    const config = await store.get(connectorId, userId);
+    return config ?? { connectorId, agentIds: [], primaryAgentId: '' };
+  });
+
+  app.put('/api/connector/:connectorId/agents', async (request, reply) => {
+    const userId = requireTrustedHubIdentity(request, reply);
+    if (!userId) return { error: 'Identity required' };
+    const { connectorId } = request.params as { connectorId: string };
+    const store = opts.agentConfigStore;
+    if (!store) {
+      reply.status(503);
+      return { error: 'Agent config store not available' };
+    }
+    const body = request.body as { agentIds?: string[]; primaryAgentId?: string };
+    const agentIds = Array.isArray(body.agentIds) ? body.agentIds : [];
+    const primaryAgentId = body.primaryAgentId ?? agentIds[0] ?? '';
+
+    if (agentIds.length === 0) {
+      await store.remove(connectorId, userId);
+      return { connectorId, agentIds: [], primaryAgentId: '' };
+    }
+
+    const config = {
+      connectorId,
+      agentIds,
+      primaryAgentId: agentIds.includes(primaryAgentId) ? primaryAgentId : agentIds[0],
+      userId,
+      updatedAt: Date.now(),
+    };
+    await store.set(config);
+    return config;
   });
 };

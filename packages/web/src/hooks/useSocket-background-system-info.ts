@@ -4,6 +4,7 @@ import type {
   BackgroundStreamRef,
   HandleBackgroundMessageOptions,
 } from './useSocket-background.types';
+import { parseSystemInfoContent } from './parse-system-info';
 
 interface SystemInfoConsumeResult {
   consumed: boolean;
@@ -40,7 +41,8 @@ export function consumeBackgroundSystemInfo(
   let consumed = false;
 
   try {
-    const parsed = JSON.parse(sysContent);
+    const parsed = parseSystemInfoContent(sysContent);
+    if (!parsed) throw new Error('not parseable system_info');
     if (parsed?.type === 'invocation_created') {
       const targetCatId = parsed.catId ?? msg.catId;
       const invocationId = typeof parsed.invocationId === 'string' ? parsed.invocationId : undefined;
@@ -239,6 +241,13 @@ export function consumeBackgroundSystemInfo(
       const warningText = typeof parsed.message === 'string' ? parsed.message : '';
       sysContent = warningText ? `⚠️ ${warningText}` : '⚠️ Warning';
       sysVariant = 'info';
+    } else if (parsed?.type === 'processing_status') {
+      // RelayClaw processing heartbeat — keep background cat status fresh without a raw JSON bubble.
+      const processingStatus = parsed.status as string;
+      if (processingStatus !== 'idle') {
+        options.store.updateThreadCatStatus(msg.threadId, msg.catId, 'streaming');
+      }
+      consumed = true;
     } else if (parsed?.type === 'governance_blocked') {
       const projectPath = typeof parsed.projectPath === 'string' ? parsed.projectPath : '';
       const reasonKind = (parsed.reasonKind as string) ?? 'needs_bootstrap';

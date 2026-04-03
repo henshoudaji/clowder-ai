@@ -121,17 +121,34 @@ describe('Thread delete confirmation (I-1)', () => {
     });
   }
 
-  function findDeleteButton(): HTMLButtonElement | undefined {
-    return Array.from(container.querySelectorAll('button')).find((b) => b.getAttribute('title') === '\u5220\u9664\u5bf9\u8bdd');
-  }
+  function openDeleteDialog() {
+    const threadTitle = Array.from(container.querySelectorAll('.ui-thread-title')).find((node) =>
+      node.textContent?.includes('\u6d4b\u8bd5\u5bf9\u8bdd\u6807\u9898'),
+    );
+    expect(threadTitle, 'thread row should exist').toBeTruthy();
 
-  /** F095 defaults all sections collapsed. Click expand-all first. */
-  function expandAll() {
-    const expandBtn = container.querySelector('[data-testid="expand-all-btn"]') as HTMLButtonElement | null;
-    if (expandBtn)
-      act(() => {
-        expandBtn.click();
-      });
+    const threadItem = threadTitle?.closest('.ui-thread-item') as HTMLDivElement | null;
+    expect(threadItem, 'thread item should exist').toBeTruthy();
+
+    act(() => {
+      threadItem?.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 120,
+          clientY: 120,
+        }),
+      );
+    });
+
+    const deleteBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('\u5220\u9664\u5bf9\u8bdd'),
+    );
+    expect(deleteBtn, 'delete menu item should exist for non-default thread').toBeTruthy();
+
+    act(() => {
+      (deleteBtn as HTMLButtonElement).click();
+    });
   }
 
   it('shows confirmation dialog when clicking delete', async () => {
@@ -144,19 +161,51 @@ describe('Thread delete confirmation (I-1)', () => {
     expect(container.textContent).toContain('\u667a\u80fd\u4f53');
     expect(container.textContent).toContain('\u6e20\u9053');
     expect(container.textContent).toContain('\u6280\u80fd');
-    expandAll();
-
-    const deleteBtn = findDeleteButton();
-    expect(deleteBtn, 'delete button should exist for non-default thread').toBeTruthy();
-
-    act(() => {
-      deleteBtn?.click();
-    });
+    openDeleteDialog();
 
     // Dialog should appear with thread title and warning
     expect(container.textContent).toContain('\u786e\u8ba4\u5220\u9664\u5bf9\u8bdd');
     expect(container.textContent).toContain('\u6d4b\u8bd5\u5bf9\u8bdd\u6807\u9898');
     expect(container.textContent).toContain('\u56de\u6536\u7ad9');
+
+    const backdrop = container.querySelector('.fixed.inset-0');
+    expect(backdrop?.className).toContain('bg-black/35');
+    expect(backdrop?.className).toContain('p-4');
+
+    const dialog = Array.from(container.querySelectorAll('div')).find((node) =>
+      node.className.includes('shadow-2xl') && node.textContent?.includes('\u786e\u8ba4\u5220\u9664\u5bf9\u8bdd'),
+    );
+    expect(dialog?.className).toContain('w-[500px]');
+    expect(dialog?.className).toContain('rounded-2xl');
+    expect(dialog?.className).toContain('border');
+    expect(dialog?.className).toContain('border-[#E5EAF0]');
+    expect(dialog?.className).toContain('bg-white');
+    expect(dialog?.className).toContain('p-6');
+
+    const stack = Array.from(dialog?.children ?? []).find((node) =>
+      (node as HTMLDivElement).className?.includes('flex flex-col gap-5'),
+    ) as HTMLDivElement | undefined;
+    expect(stack?.className).toContain('flex');
+    expect(stack?.className).toContain('flex-col');
+    expect(stack?.className).toContain('gap-5');
+
+    const headerRow = Array.from(stack?.children ?? []).find((node) =>
+      (node as HTMLDivElement).className?.includes('flex items-center justify-between'),
+    ) as HTMLDivElement | undefined;
+    expect(headerRow?.className).toContain('flex');
+    expect(headerRow?.className).toContain('items-center');
+    expect(headerRow?.className).toContain('justify-between');
+
+    const closeBtn = Array.from(headerRow?.querySelectorAll('button') ?? []).find((button) =>
+      button.getAttribute('aria-label') === 'close',
+    ) as HTMLButtonElement | undefined;
+    expect(closeBtn?.className).toContain('flex h-6 w-6 items-center justify-center');
+    expect(closeBtn?.className).toContain('hover:bg-[#F7F8FA]');
+
+    const contentBlock = Array.from(stack?.children ?? []).find((node) =>
+      (node as HTMLDivElement).className?.includes('space-y-1'),
+    ) as HTMLDivElement | undefined;
+    expect(contentBlock?.className).toContain('space-y-1');
 
     // No DELETE API call yet
     const deleteCalls = mockApiFetch.mock.calls.filter(
@@ -170,16 +219,13 @@ describe('Thread delete confirmation (I-1)', () => {
       root.render(React.createElement(ThreadSidebar));
     });
     await flush();
-    expandAll();
-
-    const deleteBtn = findDeleteButton();
-    act(() => {
-      deleteBtn?.click();
-    });
+    openDeleteDialog();
     expect(container.textContent).toContain('\u786e\u8ba4\u5220\u9664\u5bf9\u8bdd');
 
-    // Click cancel
     const cancelBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '\u53d6\u6d88')!;
+    expect(cancelBtn.className).toContain('ui-button-secondary');
+
+    // Click cancel
     act(() => {
       cancelBtn.click();
     });
@@ -193,16 +239,12 @@ describe('Thread delete confirmation (I-1)', () => {
       root.render(React.createElement(ThreadSidebar));
     });
     await flush();
-    expandAll();
-
-    const deleteBtn = findDeleteButton();
-    act(() => {
-      deleteBtn?.click();
-    });
+    openDeleteDialog();
 
     // Click confirm
     const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '\u79fb\u5165\u56de\u6536\u7ad9')!;
     expect(confirmBtn).toBeTruthy();
+    expect(confirmBtn.className).toContain('ui-button-primary');
 
     await act(async () => {
       confirmBtn.click();

@@ -240,6 +240,23 @@ def convert_svg_to_png(svg_path: Path, png_path: Path, width: int = None, height
     return False
 
 
+def natural_sort_key(path: Path) -> list:
+    """
+    Natural sort key for paths with numbers.
+    Ensures page_2.svg < page_10.svg (not page_10.svg < page_2.svg)
+    """
+    name = path.name
+    # Split into text and number parts: "page_10.svg" -> ["page_", 10, ".svg"]
+    parts = re.split(r'(\d+)', name)
+    result = []
+    for part in parts:
+        if part.isdigit():
+            result.append(int(part))
+        else:
+            result.append(part)
+    return result
+
+
 def find_svg_files(project_path: Path, source: str = 'output') -> Tuple[List[Path], str]:
     """
     Find SVG files in the project
@@ -278,7 +295,7 @@ def find_svg_files(project_path: Path, source: str = 'output') -> Tuple[List[Pat
         else:
             return [], ''
 
-    return sorted(svg_dir.glob('*.svg')), dir_name
+    return sorted(svg_dir.glob('*.svg'), key=natural_sort_key), dir_name
 
 
 def find_notes_files(project_path: Path, svg_files: List[Path] = None) -> dict:

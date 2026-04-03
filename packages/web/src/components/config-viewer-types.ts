@@ -16,6 +16,23 @@ export interface CatConfig {
   mcpSupport: boolean;
   accountRef?: string;
   providerProfileId?: string;
+  embeddedAcpExecutablePath?: string;
+  embeddedAcpConfig?: {
+    executablePath?: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    provider?: 'openai_compatible' | 'bigmodel' | 'minimax' | 'echo';
+    baseUrl?: string;
+    apiKey?: string;
+    headers?: Record<string, string>;
+    sslVerify?: boolean | null;
+    temperature?: number;
+    topP?: number;
+    maxTokens?: number;
+    contextWindow?: number;
+    connectTimeoutSeconds?: number;
+  };
 }
 
 export interface ContextBudget {

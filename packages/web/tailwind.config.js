@@ -138,6 +138,16 @@ module.exports = {
         'tree-expand': 'tree-expand 0.15s ease-out',
         shimmer: 'shimmer 1.5s ease-in-out infinite',
       },
+      fontFamily: {
+        // 取名为 sans（覆盖默认无衬线字体），也可以取名 noto、chinese 等
+        sans: [
+          '"Noto Sans SC"',
+          '"PingFang SC"',
+          '"Microsoft YaHei"',
+          '"Segoe UI"',
+          "sans-serif",
+        ],
+      },
     },
   },
   plugins: [],

@@ -9,7 +9,7 @@ const { mockToggleTheme, mockOpenHub } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/hooks/useTheme', () => ({
-  useTheme: () => ({ theme: 'default', config: null, toggleTheme: mockToggleTheme }),
+  useTheme: () => ({ theme: 'warm', config: null, toggleTheme: mockToggleTheme }),
 }));
 
 vi.mock('@/stores/chatStore', () => {

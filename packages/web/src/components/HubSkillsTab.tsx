@@ -1,8 +1,8 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/utils/api-client';
-import { UploadSkillModal } from './UploadSkillModal';
+import { NameInitialIcon } from './NameInitialIcon';
 import styles from './HubSkillsTab.module.css';
 
 interface SearchSkill {
@@ -23,66 +23,23 @@ interface SearchResult {
   hasMore: boolean;
 }
 
-type InstallStatus = 'installing' | 'success' | string;
+type InstallStatus = 'installing' | string;
 
 const GENERAL_CATEGORY = '通用技能';
 const INSTALLING_LABEL = '安装中...';
-const INSTALL_SUCCESS_LABEL = '安装成功';
 const INSTALL_FAILED_LABEL = '安装失败';
 const INSTALL_LABEL = '安装';
 const NO_RESULTS_LABEL = '未找到匹配的技能';
 const FALLBACK_DESCRIPTION = '暂未提供技能描述。';
 const INSTALLED_LABEL = '已安装';
-const SEARCH_FAILED_LABEL = '搜索失败';
-const NETWORK_ERROR_LABEL = '网络错误';
-const NETWORK_RETRY_LABEL = '网络错误，请重试';
-const SEARCH_PLACEHOLDER = '输入关键词搜索技能';
+const SEARCH_PLACEHOLDER = '输入关键字搜索、过滤';
 const SEARCH_ARIA_LABEL = '搜索 SkillHub 技能';
-const IMPORT_LABEL = '导入';
 const LOADING_LABEL = '加载中...';
 const SILL_SQUARE_LABEL = '技能广场';
-const PAGE_LABEL_PREFIX = '第 ';
-const PAGE_LABEL_SUFFIX = ' 页';
-const LOAD_MORE_PREFIX = '加载更多（';
-const LOAD_MORE_SUFFIX = '）';
-const UPLOAD_SUCCESS_LABEL = '技能上传成功';
 
 function getSkillCategory(skill: SearchSkill): string {
   const primaryTag = skill.tags.find((tag) => tag.trim().length > 0);
   return primaryTag ? primaryTag.replace(/[-_]/g, ' ') : GENERAL_CATEGORY;
-}
-
-function getSkillSourceLabel(skill: SearchSkill): string {
-  return skill.repo.githubOwner || skill.repo.githubRepoName || 'SkillHub';
-}
-
-function SkillSourceMark() {
-  return (
-    <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none">
-      <path d="M4 7.2 10 4l6 3.2-6 3.2L4 7.2Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M4 10.2 10 13.4l6-3.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M4 13.2 10 16.4l6-3.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SkillArtwork() {
-  return (
-    <div aria-hidden="true" className={styles.artwork}>
-      <svg className={styles.artworkSvg} viewBox="0 0 44 44" fill="none">
-        <rect x="7" y="7" width="30" height="30" rx="10" fill="var(--surface-card-muted)" />
-        <rect x="8" y="8" width="28" height="28" rx="9" fill="var(--accent-primary)" />
-        <circle cx="15" cy="15" r="9" fill="var(--accent-soft-strong)" fillOpacity="0.5" />
-        <path
-          d="M16 17.5c0-1.4 1.1-2.5 2.5-2.5h7.7c.7 0 1.3.3 1.8.7l2.3 2.3c.5.5.7 1.1.7 1.8v6.7c0 1.4-1.1 2.5-2.5 2.5h-9.7c-1.4 0-2.5-1.1-2.5-2.5v-9Z"
-          fill="rgba(255,255,255,0.96)"
-        />
-        <path d="M27.8 15.7v3.5c0 .6.5 1.1 1.1 1.1h3.5" stroke="var(--accent-primary)" strokeWidth="1.4" strokeLinecap="round" />
-        <path d="M19.5 23h8.4M19.5 26h5.4" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="31.2" cy="13.8" r="2.2" fill="var(--surface-card)" fillOpacity="0.92" />
-      </svg>
-    </div>
-  );
 }
 
 function InstallButton({
@@ -105,23 +62,6 @@ function InstallButton({
       </button>
     );
   }
-  if (status === 'success') {
-    return (
-      <button type="button" disabled className={`${styles.installButton} ui-status-success`}>
-        {INSTALL_SUCCESS_LABEL}
-      </button>
-    );
-  }
-  if (typeof status === 'string' && status !== 'installing' && status !== 'success') {
-    return (
-      <div className="flex flex-col items-end gap-1">
-        <button type="button" onClick={() => onInstall(owner, repo, slug)} className={`${styles.installButton} ui-status-error`}>
-          {INSTALL_FAILED_LABEL}
-        </button>
-        <span className="max-w-[180px] text-right text-[10px] leading-4 text-[var(--state-error-text)]">{status}</span>
-      </div>
-    );
-  }
   return (
     <button type="button" onClick={() => onInstall(owner, repo, slug)} className={`${styles.installButton} ${styles.installButtonPrimary}`}>
       {INSTALL_LABEL}
@@ -133,16 +73,10 @@ function SkillList({
   results,
   installStatus,
   onInstall,
-  onLoadMore,
-  loadingMore,
-  showPagination = true,
 }: {
   results: SearchResult;
   installStatus: Map<string, InstallStatus>;
   onInstall: (owner: string, repo: string, skill: string) => void;
-  onLoadMore: () => void;
-  loadingMore: boolean;
-  showPagination?: boolean;
 }) {
   if (results.skills.length === 0) {
     return <p className="py-2 text-xs text-[var(--text-muted)]">{NO_RESULTS_LABEL}</p>;
@@ -151,81 +85,79 @@ function SkillList({
   return (
     <div className="space-y-4">
       <div className={styles.skillGrid}>
-        {results.skills.map((skill) => (
-          <article key={skill.id} className={styles.card}>
-            <div className={styles.header}>
-              <SkillArtwork />
-              <div className={styles.content}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 className={`${styles.title} truncate`}>{skill.name}</h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 leading-[18px] text-[var(--text-secondary)] text-xs">
-                      <span className="truncate">{getSkillCategory(skill)}</span>
-                      {skill.stars !== undefined ? (
-                        <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
-                          <svg aria-hidden="true" className="h-3 w-3" viewBox="0 0 12 12" fill="currentColor">
-                            <path d="M6 1.2 7.55 4.3l3.45.5-2.5 2.45.6 3.45L6 9.1l-3.1 1.6.6-3.45L1 4.8l3.45-.5L6 1.2Z" />
-                          </svg>
-                          <span>{skill.stars}</span>
-                        </span>
-                      ) : null}
+        {results.skills.map((skill) => {
+          const resolvedDescription = skill.description.trim() || FALLBACK_DESCRIPTION;
+
+          return (
+            <article key={skill.id} className={styles.card}>
+              <div className={styles.header}>
+                <NameInitialIcon name={skill.name} />
+                <div className={styles.content}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className={`${styles.title} truncate`}>{skill.name}</h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 leading-[18px] text-[var(--text-secondary)] text-xs">
+                        <span className="ui-badge-muted">{getSkillCategory(skill)}</span>
+                        {skill.stars !== undefined ? (
+                          <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
+                            <svg aria-hidden="true" className="h-3 w-3" viewBox="0 0 12 12" fill="currentColor">
+                              <path d="M6 1.2 7.55 4.3l3.45.5-2.5 2.45.6 3.45L6 9.1l-3.1 1.6.6-3.45L1 4.8l3.45-.5L6 1.2Z" />
+                            </svg>
+                            <span>{skill.stars}</span>
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <p className={styles.description}>{skill.description || FALLBACK_DESCRIPTION}</p>
+              <p className={styles.description} title={resolvedDescription}>
+                {resolvedDescription}
+              </p>
 
-            <div className={styles.footer}>
-              <div className={styles.source}>
-                <span className={styles.sourceMark}>
-                  <SkillSourceMark />
-                </span>
-                <span className="truncate">{getSkillSourceLabel(skill)}</span>
+              <div className={styles.footer}>
+                {!skill.isInstalled ? (
+                  <div className="shrink-0">
+                    <InstallButton
+                      slug={skill.slug}
+                      owner={skill.repo.githubOwner}
+                      repo={skill.repo.githubRepoName}
+                      status={installStatus.get(skill.slug)}
+                      onInstall={onInstall}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className={`${styles.installButton} ${styles.installButtonSuccess} shrink-0`}
+                  >
+                    {INSTALLED_LABEL}
+                  </button>
+                )}
               </div>
-              {!skill.isInstalled ? (
-                <div className="shrink-0">
-                  <InstallButton
-                    slug={skill.slug}
-                    owner={skill.repo.githubOwner}
-                    repo={skill.repo.githubRepoName}
-                    status={installStatus.get(skill.slug)}
-                    onInstall={onInstall}
-                  />
-                </div>
-              ) : <span className={`${styles.badge} ui-status-success shrink-0`}>{INSTALLED_LABEL}</span>}
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
-      {results.hasMore && showPagination && (
-        <button type="button" onClick={onLoadMore} disabled={loadingMore} className="ui-button-secondary mt-1 w-full disabled:opacity-50">
-          {loadingMore ? LOADING_LABEL : `${LOAD_MORE_PREFIX}${PAGE_LABEL_PREFIX}${results.page + 1}${PAGE_LABEL_SUFFIX}${LOAD_MORE_SUFFIX}`}
-        </button>
-      )}
     </div>
   );
 }
 
 export function HubSkillsTab() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [trendingResults, setTrendingResults] = useState<SearchResult | null>(null);
-  const [trendingLoading, setTrendingLoading] = useState(false);
-  const [showUpload, setShowUpload] = useState(false);
+  const [allResults, setAllResults] = useState<SearchResult | null>(null);
+  const [loading, setLoading] = useState(false);
   const [installStatus, setInstallStatus] = useState<Map<string, InstallStatus>>(new Map());
   const statusTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setInstallStatusWithTimer = useCallback((slug: string, status: InstallStatus) => {
     setInstallStatus((prev) => new Map(prev).set(slug, status));
     const existing = statusTimers.current.get(slug);
     if (existing) clearTimeout(existing);
-    if (typeof status === 'string' && status !== 'installing' && status !== 'success') {
+    if (typeof status === 'string' && status !== 'installing') {
       const timer = setTimeout(() => {
         setInstallStatus((prev) => {
           const next = new Map(prev);
@@ -236,6 +168,34 @@ export function HubSkillsTab() {
       }, 3000);
       statusTimers.current.set(slug, timer);
     }
+  }, []);
+
+  const clearInstallStatus = useCallback((slug: string) => {
+    setInstallStatus((prev) => {
+      const next = new Map(prev);
+      next.delete(slug);
+      return next;
+    });
+    const existing = statusTimers.current.get(slug);
+    if (existing) {
+      clearTimeout(existing);
+      statusTimers.current.delete(slug);
+    }
+  }, []);
+
+  const markSkillInstalled = useCallback((slug: string) => {
+    const markInstalled = (result: SearchResult | null): SearchResult | null => {
+      if (!result) return result;
+      let changed = false;
+      const skills = result.skills.map((item) => {
+        if (item.slug !== slug || item.isInstalled) return item;
+        changed = true;
+        return { ...item, isInstalled: true };
+      });
+      return changed ? { ...result, skills } : result;
+    };
+
+    setAllResults((prev) => markInstalled(prev));
   }, []);
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
@@ -251,71 +211,33 @@ export function HubSkillsTab() {
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    setTrendingLoading(true);
+    setLoading(true);
     apiFetch('/api/skills/trending')
       .then((res) => res.ok && res.json())
-      .then((data) => data && setTrendingResults(data as SearchResult))
+      .then((data) => data && setAllResults(data as SearchResult))
       .catch(() => {})
-      .finally(() => setTrendingLoading(false));
+      .finally(() => setLoading(false));
   }, []);
 
-  const executeSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults(null);
-      setSearchError(null);
-      return;
-    }
-    setSearchError(null);
-    try {
-      const res = await apiFetch(`/api/skills/search?q=${encodeURIComponent(query.trim())}&page=1&limit=20`);
-      if (!res.ok) {
-        setSearchError(SEARCH_FAILED_LABEL);
-        return;
-      }
-      setSearchResults((await res.json()) as SearchResult);
-    } catch {
-      setSearchError(NETWORK_ERROR_LABEL);
-    }
-  }, []);
-
-  const handleSearchInput = useCallback(
-    (value: string) => {
-      setSearchQuery(value);
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      if (!value.trim()) {
-        setSearchResults(null);
-        setSearchError(null);
-        return;
-      }
-      debounceTimer.current = setTimeout(() => executeSearch(value), 300);
-    },
-    [executeSearch],
-  );
-
-  const handleLoadMore = useCallback(async () => {
-    if (!searchResults || !searchQuery.trim()) return;
-    const nextPage = searchResults.page + 1;
-    setLoadingMore(true);
-    try {
-      const res = await apiFetch(
-        `/api/skills/search?q=${encodeURIComponent(searchQuery.trim())}&page=${nextPage}&limit=20`,
-      );
-      if (res.ok) {
-        const data = (await res.json()) as SearchResult;
-        setSearchResults({ ...data, skills: [...searchResults.skills, ...data.skills] });
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [searchResults, searchQuery]);
+  const normalizedSearch = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+  const filteredSkills = useMemo(() => {
+    const source = allResults?.skills ?? [];
+    if (!normalizedSearch) return source;
+    const tokens = normalizedSearch.split(/\s+/).filter(Boolean);
+    return source.filter((skill) => {
+      const haystack = [
+        skill.id,
+        skill.slug,
+        skill.name,
+        ...skill.tags,
+        skill.repo.githubOwner,
+        skill.repo.githubRepoName,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return tokens.every((token) => haystack.includes(token));
+    });
+  }, [allResults, normalizedSearch]);
 
   const handleInstall = useCallback(
     async (owner: string, repo: string, skill: string) => {
@@ -327,24 +249,33 @@ export function HubSkillsTab() {
           body: JSON.stringify({ owner, repo, skill }),
         });
         if (res.ok) {
-          setInstallStatusWithTimer(skill, 'success');
+          clearInstallStatus(skill);
+          markSkillInstalled(skill);
           showToast(`“${skill}” 安装成功`, 'success');
         } else {
           const payload = (await res.json().catch(() => ({}))) as { error?: string };
-          const message = payload.error ?? `${INSTALL_FAILED_LABEL} (${res.status})`;
-          setInstallStatusWithTimer(skill, message);
+          const detail = payload.error ?? `HTTP ${res.status}`;
+          const message = `${INSTALL_FAILED_LABEL}：${detail}`;
+          clearInstallStatus(skill);
           showToast(message, 'error');
         }
       } catch {
-        setInstallStatusWithTimer(skill, NETWORK_RETRY_LABEL);
-        showToast('网络错误，安装失败', 'error');
+        clearInstallStatus(skill);
+        showToast(`${INSTALL_FAILED_LABEL}：网络错误，请重试`, 'error');
       }
     },
-    [setInstallStatusWithTimer, showToast],
+    [clearInstallStatus, markSkillInstalled, setInstallStatusWithTimer, showToast],
   );
 
-  const displayResults = searchResults ?? trendingResults;
-  const displayPagination = searchResults !== null;
+  const displayResults: SearchResult | null = allResults
+    ? {
+        ...allResults,
+        skills: filteredSkills,
+        total: filteredSkills.length,
+        page: 1,
+        hasMore: false,
+      }
+    : null;
 
   return (
     <div className="space-y-[var(--space-9)]">
@@ -359,50 +290,29 @@ export function HubSkillsTab() {
         </div>
       )}
 
-      <UploadSkillModal
-        open={showUpload}
-        onClose={() => setShowUpload(false)}
-        onSuccess={() => {
-          showToast(UPLOAD_SUCCESS_LABEL, 'success');
-        }}
-      />
-
-      <section className="space-y-[var(--space-6)]">
-        <div className="space-y-4">
+      <section className="space-y-[var(--space-6)] mt-4">
+        <div className="space-y-0">
           <p className="text-[20px] font-semibold">
             {SILL_SQUARE_LABEL}
             {displayResults ? ` (${displayResults.total})` : ''}
-            {displayResults && displayPagination ? `，${PAGE_LABEL_PREFIX}${displayResults.page}${PAGE_LABEL_SUFFIX}` : ''}
           </p>
-          <div className="flex flex-col gap-[var(--space-5)] sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-[var(--space-5)] py-6 sm:flex-row sm:items-center">
             <input
               type="text"
               aria-label={SEARCH_ARIA_LABEL}
               value={searchQuery}
-              onChange={(event) => handleSearchInput(event.target.value)}
-              onKeyDown={(event) => event.key === 'Enter' && void executeSearch(searchQuery)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={SEARCH_PLACEHOLDER}
-              className="ui-field min-h-[var(--control-height-touch)] flex-1 px-4 py-2 text-sm sm:min-h-[var(--control-height-sm)]"
+              className="ui-field h-[28px] min-h-[28px] flex-1 px-3 py-0 text-xs"
             />
-            <button
-              type="button"
-              onClick={() => setShowUpload(true)}
-              className="ui-button-secondary min-h-[var(--control-height-touch)] shrink-0 sm:min-h-[var(--control-height-sm)]"
-            >
-              {IMPORT_LABEL}
-            </button>
           </div>
-          {searchError && <p className="text-[11px] text-[var(--state-error-text)]">{searchError}</p>}
           {displayResults ? (
             <SkillList
               results={displayResults}
               installStatus={installStatus}
               onInstall={handleInstall}
-              onLoadMore={displayPagination ? handleLoadMore : () => {}}
-              loadingMore={displayPagination ? loadingMore : false}
-              showPagination={displayPagination}
             />
-          ) : trendingLoading ? (
+          ) : loading ? (
             <p className="text-[11px] text-[var(--text-muted)]">{LOADING_LABEL}</p>
           ) : null}
         </div>

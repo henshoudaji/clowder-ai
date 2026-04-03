@@ -588,12 +588,12 @@ describe('CatCafeHub provider profiles tab', () => {
     await flushEffects();
 
     const commandInput = container.querySelector('input[placeholder*="命令，如"]') as HTMLInputElement | null;
-    const argsInput = container.querySelector('textarea[placeholder*="gateway acp stdio"]') as HTMLTextAreaElement | null;
+    const argsInput = container.querySelector('textarea[placeholder*="-m agent_teams gateway acp stdio"]') as HTMLTextAreaElement | null;
     const cwdInput = container.querySelector('input[placeholder*="可选 cwd"]') as HTMLInputElement | null;
 
-    expect(commandInput?.value).toBe('agent-teams');
-    expect(argsInput?.value).toBe('gateway acp stdio');
-    expect(cwdInput?.value).toBe('/opt/workspace/agent-teams');
+    expect(commandInput?.value).toBe('/tmp/project/tools/python/python.exe');
+    expect(argsInput?.value).toBe('-m agent_teams gateway acp stdio');
+    expect(cwdInput?.value).toBe('');
   });
 
   it('creates ACP provider requests with custom environment variables', async () => {
@@ -659,9 +659,9 @@ describe('CatCafeHub provider profiles tab', () => {
     expect(createPayload).toMatchObject({
       kind: 'acp',
       displayName: 'Agent Teams Env',
-      command: 'agent-teams',
-      args: ['gateway', 'acp', 'stdio'],
-      cwd: '/opt/workspace/agent-teams',
+      command: '/tmp/project/tools/python/python.exe',
+      args: ['-m', 'agent_teams', 'gateway', 'acp', 'stdio'],
+      cwd: '',
       env: {
         ACP_TRACE_STDIO: '1',
         AGENT_TEAMS_LOG_LEVEL: 'DEBUG',

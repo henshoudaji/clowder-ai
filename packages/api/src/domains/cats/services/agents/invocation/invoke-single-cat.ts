@@ -11,7 +11,13 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { type CatId, type ContextHealth, catRegistry, type MessageContent } from '@cat-cafe/shared';
+import {
+  type CatId,
+  type ContextHealth,
+  catRegistry,
+  type MessageContent,
+  resolveEmbeddedRuntimeKind,
+} from '@cat-cafe/shared';
 import { resolveRuntimeAcpModelProfileById } from '../../../../../config/acp-model-profiles.js';
 import { resolveBoundAccountRefForCat } from '../../../../../config/cat-account-binding.js';
 import { isSessionChainEnabled } from '../../../../../config/cat-config-loader.js';
@@ -32,6 +38,14 @@ import { getSessionStrategy, shouldTakeAction } from '../../../../../config/sess
 import { resolveHuaweiMaaSRuntimeConfig } from '../../../../../integrations/huawei-maas.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { resolveActiveProjectRoot } from '../../../../../utils/active-project-root.js';
+import {
+  buildEmbeddedAgentTeamsModelProfile,
+  buildEmbeddedAgentTeamsModelProfileFromBinding,
+  buildEmbeddedAgentTeamsProviderProfile,
+  embeddedAgentTeamsRuntimeAvailable,
+  resolveEmbeddedAgentTeamsExecutable,
+} from '../../../../../utils/agent-teams-bundle.js';
+import { resolveEmbeddedAgentTeamsBinding } from '../../../../../utils/embedded-runtime-bindings.js';
 import { DEFAULT_CLI_TIMEOUT_MS, resolveCliTimeoutMs } from '../../../../../utils/cli-timeout.js';
 import { findMonorepoRoot, isSameProject } from '../../../../../utils/monorepo-root.js';
 import { isUnderAllowedRoot } from '../../../../../utils/project-path.js';
@@ -606,13 +620,30 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // Legacy providerProfileId is still read as a migration fallback.
     const catConfig = catRegistry.tryGet(catId as string)?.config;
     const provider = catConfig?.provider;
+    const embeddedRuntimeKind = resolveEmbeddedRuntimeKind({ id: catId as string, provider });
+    const embeddedAcpRuntime = embeddedRuntimeKind === 'agentteams_acp';
+    const embeddedAcpExecutablePath =
+      catConfig?.embeddedAcpConfig?.executablePath?.trim() || catConfig?.embeddedAcpExecutablePath?.trim() || undefined;
+    const embeddedAcpConfig = catConfig?.embeddedAcpConfig;
     const builtinClient = provider ? resolveBuiltinClientForProvider(provider) : null;
     const defaultModel = catConfig?.defaultModel?.trim() || undefined;
     const configProjectRoot = resolveActiveProjectRoot(process.cwd());
-    const boundAccountRef = resolveBoundAccountRefForCat(configProjectRoot, catId, catConfig);
-    const modelConfigBinding = boundAccountRef
-      ? await findProjectModelConfigBinding(configProjectRoot, boundAccountRef)
+    const rawBoundAccountRef = resolveBoundAccountRefForCat(configProjectRoot, catId, catConfig);
+    const embeddedAgentTeamsBinding = embeddedAcpRuntime
+      ? await resolveEmbeddedAgentTeamsBinding(configProjectRoot, rawBoundAccountRef)
       : null;
+    const embeddedModelConfigBinding =
+      embeddedAcpRuntime && rawBoundAccountRef && !embeddedAgentTeamsBinding
+        ? await findProjectModelConfigBinding(configProjectRoot, rawBoundAccountRef)
+        : null;
+    const boundAccountRef = embeddedAcpRuntime
+      ? embeddedAgentTeamsBinding?.accountRef ?? embeddedModelConfigBinding?.id
+      : rawBoundAccountRef;
+    const modelConfigBinding = embeddedAcpRuntime
+      ? embeddedModelConfigBinding
+      : boundAccountRef
+        ? await findProjectModelConfigBinding(configProjectRoot, boundAccountRef)
+        : null;
     if (modelConfigBinding) {
       const isHuaweiMaaSBinding =
         modelConfigBinding.id === HUAWEI_MAAS_MODEL_SOURCE_ID && modelConfigBinding.protocol === 'huawei_maas';
@@ -620,7 +651,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       if (!isHuaweiMaaSBinding && !isCustomOpenAiBinding) {
         throw new Error(`unsupported model config source "${modelConfigBinding.id}"`);
       }
-      if (provider !== 'dare' && provider !== 'relayclaw') {
+      if (!embeddedAcpRuntime && provider !== 'dare' && provider !== 'relayclaw') {
         throw new Error(`client "${provider ?? 'unknown'}" does not support model config source "${modelConfigBinding.id}"`);
       }
       if (defaultModel && modelConfigBinding.models.length && !modelConfigBinding.models.includes(defaultModel)) {
@@ -630,6 +661,18 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     const resolveRuntimeAccount = async () => {
       if (boundAccountRef && modelConfigBinding) {
         return null;
+      }
+      if (embeddedAcpRuntime) {
+        if (!boundAccountRef) return null;
+        if (!embeddedAgentTeamsRuntimeAvailable(configProjectRoot, embeddedAcpExecutablePath)) {
+          throw new Error(
+            `built-in Agent Teams runtime is not ready: missing ${resolveEmbeddedAgentTeamsExecutable(configProjectRoot, embeddedAcpExecutablePath)}`,
+          );
+        }
+        if (embeddedAgentTeamsBinding) {
+          return embeddedAgentTeamsBinding.profile;
+        }
+        return resolveRuntimeProviderProfileById(configProjectRoot, boundAccountRef);
       }
       if (provider === 'acp') {
         if (!boundAccountRef) return null;
@@ -646,7 +689,9 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       account: (T & Parameters<typeof validateRuntimeProviderBinding>[1]) | null,
     ) => {
       if (!provider || !account) return account;
-      const compatibilityError = validateRuntimeProviderBinding(provider, account, defaultModel);
+      const compatibilityError = validateRuntimeProviderBinding(provider, account, defaultModel, {
+        embeddedAcpRuntime,
+      });
       if (compatibilityError) {
         throw new Error(compatibilityError);
       }
@@ -838,7 +883,28 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     }
 
     let resolvedAcpModelProfile: Awaited<ReturnType<typeof resolveRuntimeAcpModelProfileById>> = null;
-    if (provider === 'acp' && resolvedAccount?.kind === 'acp') {
+    let resolvedProviderProfileForService = resolvedAccount;
+    if (embeddedAcpRuntime) {
+      resolvedProviderProfileForService = buildEmbeddedAgentTeamsProviderProfile(
+        configProjectRoot,
+        embeddedAcpExecutablePath,
+        embeddedAcpConfig,
+      );
+      if (modelConfigBinding) {
+        resolvedAcpModelProfile = buildEmbeddedAgentTeamsModelProfileFromBinding(
+          modelConfigBinding,
+          defaultModel ?? '',
+          userId,
+        );
+      } else {
+        if (!resolvedAccount) {
+          throw new Error(
+            'built-in Agent Teams runtime requires a bound model config source or OpenAI-compatible API key provider profile',
+          );
+        }
+        resolvedAcpModelProfile = buildEmbeddedAgentTeamsModelProfile(resolvedAccount, defaultModel ?? '');
+      }
+    } else if (provider === 'acp' && resolvedAccount?.kind === 'acp') {
       if (resolvedAccount.modelAccessMode === 'clowder_default_profile') {
         const modelProfileRef = resolvedAccount.defaultModelProfileRef?.trim();
         if (!modelProfileRef) {
@@ -871,7 +937,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // Keep the skill-selection reminder close to the task so they query runtime skills
     // before diving into repository search for planning/TDD/collab/worktree requests.
     const acpRuntimeSkillHint =
-      provider === 'acp'
+      provider === 'acp' || embeddedAcpRuntime
         ? 'ACP skill rule: planning/TDD/compare-options/decision/worktree tasks use cat_cafe_list_skills before cat_cafe_search_evidence, repo grep, or read. If a close match appears, call cat_cafe_load_skill immediately before other tools. Map: implementation plan -> writing-plans; failed tests/minimal implementation/refactor -> tdd; compare/recommend/decision -> collaborative-thinking; branch isolation -> worktree. If empty, retry once with a likely exact skill name.'
         : '';
 
@@ -922,7 +988,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       // F118 Phase B: Enable liveness probe with defaults for all CLI providers
       livenessProbe: {},
       ...(catConfig?.cliConfigArgs?.length ? { cliConfigArgs: catConfig.cliConfigArgs } : {}),
-      ...(resolvedAccount ? { providerProfile: resolvedAccount } : {}),
+      ...(resolvedProviderProfileForService ? { providerProfile: resolvedProviderProfileForService } : {}),
       ...(resolvedAcpModelProfile ? { acpModelProfile: resolvedAcpModelProfile } : {}),
     };
 

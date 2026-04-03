@@ -620,6 +620,135 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(bareAccept.statusCode, 201, 'bare model + ocProviderName → 201');
   });
 
+  it('PATCH /api/cats/:id saves embedded Agent Teams executable override for the seed member', async () => {
+    const projectRoot = createProjectRootFromRepoTemplate();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    mkdirSync(join(projectRoot, 'vendor', 'agent-teams'), { recursive: true });
+    writeFileSync(join(projectRoot, 'vendor', 'agent-teams', 'agent-teams.exe'), '', 'utf8');
+
+    const { createProviderProfile } = await import('../dist/config/provider-profiles.js');
+    const openAiProfile = await createProviderProfile(projectRoot, {
+      provider: 'openai',
+      name: 'codex-sponsor',
+      mode: 'api_key',
+      authType: 'api_key',
+      protocol: 'openai',
+      baseUrl: 'https://api.bound.example/v1',
+      apiKey: 'sk-bound-openai',
+      models: ['gpt-5.4'],
+      setActive: false,
+    });
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/agentteams',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        accountRef: openAiProfile.id,
+        defaultModel: 'gpt-5.4',
+        embeddedAcpExecutablePath: 'vendor/agent-teams/agent-teams.exe',
+        embeddedAcpConfig: {
+          executablePath: 'vendor/agent-teams/agent-teams.exe',
+          args: ['--trace', 'gateway', 'acp', 'stdio'],
+          cwd: 'vendor/agent-teams',
+          env: {
+            ACP_TRACE_STDIO: '1',
+            AGENT_TEAMS_LOG_LEVEL: 'debug',
+          },
+        },
+      }),
+    });
+
+    assert.equal(patchRes.statusCode, 200);
+    const patchBody = JSON.parse(patchRes.body);
+    assert.equal(patchBody.cat.id, 'agentteams');
+    assert.equal(patchBody.cat.accountRef, openAiProfile.id);
+    assert.equal(patchBody.cat.embeddedAcpExecutablePath, 'vendor/agent-teams/agent-teams.exe');
+    assert.deepEqual(patchBody.cat.embeddedAcpConfig, {
+      executablePath: 'vendor/agent-teams/agent-teams.exe',
+      args: ['--trace', 'gateway', 'acp', 'stdio'],
+      cwd: 'vendor/agent-teams',
+      env: {
+        ACP_TRACE_STDIO: '1',
+        AGENT_TEAMS_LOG_LEVEL: 'debug',
+      },
+    });
+
+    const listRes = await app.inject({ method: 'GET', url: '/api/cats' });
+    assert.equal(listRes.statusCode, 200);
+    const listBody = JSON.parse(listRes.body);
+    const agentTeams = listBody.cats.find((cat) => cat.id === 'agentteams');
+    assert.ok(agentTeams, 'agentteams should appear in /api/cats');
+    assert.equal(agentTeams.embeddedAcpExecutablePath, 'vendor/agent-teams/agent-teams.exe');
+    assert.deepEqual(agentTeams.embeddedAcpConfig, {
+      executablePath: 'vendor/agent-teams/agent-teams.exe',
+      args: ['--trace', 'gateway', 'acp', 'stdio'],
+      cwd: 'vendor/agent-teams',
+      env: {
+        ACP_TRACE_STDIO: '1',
+        AGENT_TEAMS_LOG_LEVEL: 'debug',
+      },
+    });
+  });
+
+  it('PATCH /api/cats/:id accepts model.json bindings for the embedded Agent Teams seed member', async () => {
+    const projectRoot = createProjectRootFromRepoTemplate();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    mkdirSync(join(projectRoot, 'tools', 'python'), { recursive: true });
+    writeFileSync(join(projectRoot, 'tools', 'python', 'python.exe'), '', 'utf8');
+    mkdirSync(join(projectRoot, '.cat-cafe'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, '.cat-cafe', 'model.json'),
+      `${JSON.stringify({ 'huawei-maas': [{ id: 'glm-5' }, { id: 'qwen3-32b' }] }, null, 2)}\n`,
+      'utf8',
+    );
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/cats/agentteams',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        client: 'relayclaw',
+        accountRef: 'huawei-maas',
+        defaultModel: 'glm-5',
+      }),
+    });
+
+    assert.equal(patchRes.statusCode, 200);
+    const patchBody = JSON.parse(patchRes.body);
+    assert.equal(patchBody.cat.id, 'agentteams');
+    assert.equal(patchBody.cat.accountRef, 'huawei-maas');
+    assert.equal(patchBody.cat.defaultModel, 'glm-5');
+
+    const listRes = await app.inject({ method: 'GET', url: '/api/cats' });
+    assert.equal(listRes.statusCode, 200);
+    const listBody = JSON.parse(listRes.body);
+    const agentTeams = listBody.cats.find((cat) => cat.id === 'agentteams');
+    assert.ok(agentTeams, 'agentteams should appear in /api/cats');
+    assert.equal(agentTeams.accountRef, 'huawei-maas');
+    assert.equal(agentTeams.defaultModel, 'glm-5');
+  });
+
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');

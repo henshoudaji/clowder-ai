@@ -5,7 +5,14 @@
  */
 
 import { resolve } from 'node:path';
-import { type CatConfig, type CatProvider, type ContextBudget, catRegistry, type RosterEntry } from '@cat-cafe/shared';
+import {
+  type CatConfig,
+  type CatProvider,
+  type ContextBudget,
+  catRegistry,
+  type RosterEntry,
+  resolveEmbeddedRuntimeKind,
+} from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { isSeedCat, resolveBoundAccountRefForCat } from '../config/cat-account-binding.js';
@@ -25,7 +32,9 @@ import {
 import { createRuntimeCat, deleteRuntimeCat, updateRuntimeCat } from '../config/runtime-cat-catalog.js';
 import { deleteRuntimeOverride, getRuntimeOverride, setRuntimeOverride } from '../config/session-strategy-overrides.js';
 import { resolveActiveProjectRoot } from '../utils/active-project-root.js';
+import { embeddedAgentTeamsRuntimeAvailable, resolveEmbeddedAgentTeamsExecutable } from '../utils/agent-teams-bundle.js';
 import { getAllowedClientIds } from '../utils/client-visibility.js';
+import { resolveEmbeddedAgentTeamsBinding } from '../utils/embedded-runtime-bindings.js';
 
 const colorSchema = z.object({
   primary: z.string().min(1),
@@ -43,6 +52,23 @@ const cliSchema = z.object({
   command: z.string().min(1),
   outputFormat: z.string().min(1),
   defaultArgs: z.array(z.string().min(1)).optional(),
+});
+
+const embeddedAcpConfigSchema = z.object({
+  executablePath: z.string().min(1).optional(),
+  args: z.array(z.string().min(1)).optional(),
+  cwd: z.string().min(1).optional(),
+  env: z.record(z.string().min(1), z.string()).optional(),
+  provider: z.enum(['openai_compatible', 'bigmodel', 'minimax', 'echo']).optional(),
+  baseUrl: z.string().min(1).optional(),
+  apiKey: z.string().min(1).optional(),
+  headers: z.record(z.string().min(1), z.string()).optional(),
+  sslVerify: z.boolean().nullable().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  topP: z.number().min(0).max(1).optional(),
+  maxTokens: z.number().positive().optional(),
+  contextWindow: z.number().positive().optional(),
+  connectTimeoutSeconds: z.number().positive().optional(),
 });
 
 const clientSchema = z.enum(['anthropic', 'openai', 'google', 'dare', 'antigravity', 'opencode', 'relayclaw', 'acp']);
@@ -81,6 +107,8 @@ const createNormalCatSchema = baseCatSchema.extend({
   cli: cliSchema.optional(),
   cliConfigArgs: z.array(z.string().min(1)).optional(),
   ocProviderName: z.string().min(1).optional(),
+  embeddedAcpExecutablePath: z.string().min(1).optional(),
+  embeddedAcpConfig: embeddedAcpConfigSchema.optional(),
 });
 
 const createAntigravityCatSchema = baseCatSchema.extend({
@@ -115,6 +143,8 @@ const updateCatSchema = z.object({
   commandArgs: z.array(z.string().min(1)).optional(),
   cliConfigArgs: z.array(z.string().min(1)).optional(),
   ocProviderName: z.string().min(1).nullable().optional(),
+  embeddedAcpExecutablePath: z.string().min(1).nullable().optional(),
+  embeddedAcpConfig: embeddedAcpConfigSchema.nullable().optional(),
 });
 
 function resolveOperator(raw: unknown): string | null {
@@ -128,6 +158,15 @@ function resolveOperator(raw: unknown): string | null {
 
 function resolveProjectRoot(): string {
   return resolveActiveProjectRoot();
+}
+
+function resolveEmbeddedAcpExecutableOverride(input: {
+  embeddedAcpExecutablePath?: string | null;
+  embeddedAcpConfig?: { executablePath?: string } | null;
+}): string | null | undefined {
+  if (input.embeddedAcpExecutablePath !== undefined) return input.embeddedAcpExecutablePath;
+  const nested = input.embeddedAcpConfig?.executablePath?.trim();
+  return nested ? nested : undefined;
 }
 
 
@@ -163,6 +202,11 @@ function buildCatResponseMetadataResolver(projectRoot: string) {
     roster: roster[catId] ?? null,
     source: seedCatIds.has(catId) ? 'seed' : 'runtime',
   });
+}
+
+function resolveEmbeddedRuntimeValidation(projectRoot: string, catId: string, client: CatProvider) {
+  const source: CatSource = isSeedCat(projectRoot, catId) ? 'seed' : 'runtime';
+  return resolveEmbeddedRuntimeKind({ id: catId, provider: client, source });
 }
 
 function defaultCliForClient(client: CatProvider): { command: string; outputFormat: string } {
@@ -203,7 +247,20 @@ function buildEffectiveAccountRefResolver(projectRoot: string) {
   const inheritedBindingCache = new Map<string, Promise<string | undefined>>();
 
   return async (cat: CatConfig & { contextBudget?: ContextBudget }): Promise<string | undefined> => {
+    const embeddedRuntimeKind = resolveEmbeddedRuntimeKind({
+      id: cat.id,
+      provider: cat.provider,
+      source: isSeedCat(projectRoot, cat.id) ? 'seed' : 'runtime',
+    });
     const explicitAccountRef = resolveBoundAccountRefForCat(projectRoot, cat.id, cat);
+    if (embeddedRuntimeKind === 'agentteams_acp') {
+      const trimmedAccountRef = explicitAccountRef?.trim();
+      if (trimmedAccountRef) {
+        const modelConfigBinding = await findProjectModelConfigBinding(projectRoot, trimmedAccountRef);
+        if (modelConfigBinding) return trimmedAccountRef;
+      }
+      return (await resolveEmbeddedAgentTeamsBinding(projectRoot, explicitAccountRef))?.accountRef;
+    }
     if (explicitAccountRef !== undefined) return explicitAccountRef;
     if (!isSeedCat(projectRoot, cat.id)) return cat.accountRef;
 
@@ -223,11 +280,15 @@ function buildEffectiveAccountRefResolver(projectRoot: string) {
 
 async function validateAccountBindingOrThrow(
   projectRoot: string,
+  catId: string,
   client: CatProvider,
   accountRef?: string | null,
   defaultModel?: string | null,
   ocProviderName?: string | null,
+  embeddedAcpExecutablePath?: string | null,
 ): Promise<void> {
+  const embeddedRuntimeKind = resolveEmbeddedRuntimeValidation(projectRoot, catId, client);
+  const embeddedAcpRuntime = embeddedRuntimeKind === 'agentteams_acp';
   const trimmedAccountRef = accountRef?.trim();
   if (client === 'antigravity' && trimmedAccountRef) {
     throw new Error('antigravity client does not support accountRef');
@@ -243,6 +304,21 @@ async function validateAccountBindingOrThrow(
     const isCustomOpenAiBinding = modelConfigBinding.protocol === 'openai';
     if (!isHuaweiMaaSBinding && !isCustomOpenAiBinding) {
       throw new Error(`model config source "${trimmedAccountRef}" is not supported yet`);
+    }
+    if (embeddedAcpRuntime) {
+      if (!embeddedAgentTeamsRuntimeAvailable(projectRoot, embeddedAcpExecutablePath)) {
+        throw new Error(
+          `built-in Agent Teams runtime is not ready: missing ${resolveEmbeddedAgentTeamsExecutable(projectRoot, embeddedAcpExecutablePath)}`,
+        );
+      }
+      if (
+        defaultModel?.trim() &&
+        modelConfigBinding.models.length &&
+        !modelConfigBinding.models.includes(defaultModel.trim())
+      ) {
+        throw new Error(`model "${defaultModel.trim()}" is not available on provider "${trimmedAccountRef}"`);
+      }
+      return;
     }
     if (client !== 'dare' && client !== 'relayclaw') {
       throw new Error(`client "${client}" does not support model config source "${trimmedAccountRef}"`);
@@ -260,7 +336,14 @@ async function validateAccountBindingOrThrow(
   if (!runtimeProfile) {
     throw new Error(`provider "${trimmedAccountRef}" not found`);
   }
-  const compatibilityError = validateRuntimeProviderBinding(client, runtimeProfile, defaultModel);
+  if (embeddedAcpRuntime && !embeddedAgentTeamsRuntimeAvailable(projectRoot, embeddedAcpExecutablePath)) {
+    throw new Error(
+      `built-in Agent Teams runtime is not ready: missing ${resolveEmbeddedAgentTeamsExecutable(projectRoot, embeddedAcpExecutablePath)}`,
+    );
+  }
+  const compatibilityError = validateRuntimeProviderBinding(client, runtimeProfile, defaultModel, {
+    embeddedAcpRuntime,
+  });
   if (compatibilityError) {
     throw new Error(compatibilityError);
   }
@@ -297,9 +380,17 @@ async function toCatResponse(
     commandArgs: cat.commandArgs,
     cliConfigArgs: cat.cliConfigArgs,
     ocProviderName: cat.ocProviderName,
+    embeddedAcpExecutablePath: cat.embeddedAcpExecutablePath,
+    embeddedAcpConfig: cat.embeddedAcpConfig,
     variantLabel: cat.variantLabel ?? undefined,
     isDefaultVariant: cat.isDefaultVariant ?? undefined,
     breedDisplayName: cat.breedDisplayName ?? undefined,
+    embeddedRuntimeKind:
+      resolveEmbeddedRuntimeKind({
+        id: cat.id,
+        provider: cat.provider,
+        source: metadata.source,
+      }) ?? undefined,
     mcpSupport: cat.mcpSupport,
     roster: metadata.roster
       ? {
@@ -312,6 +403,16 @@ async function toCatResponse(
       : null,
     source: metadata.source,
   };
+}
+
+function resolveMemberLabel(existingId: string, existingConfig: CatConfig): string {
+  const displayName = existingConfig.displayName?.trim();
+  if (displayName) return displayName;
+  const name = existingConfig.name?.trim();
+  if (name) return name;
+  const nickname = existingConfig.nickname?.trim();
+  if (nickname) return nickname;
+  return existingId;
 }
 
 async function reconcileCatRegistry(
@@ -400,7 +501,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         for (const [existingId, existingConfig] of Object.entries(allConfigs)) {
           if (existingConfig.mentionPatterns.some((p: string) => p.toLowerCase() === normalized)) {
             reply.status(400);
-            return { error: `别名 "${pattern}" 已被成员 "${existingId}" 使用` };
+            return { error: `别名 "${pattern}" 已被成员 "${resolveMemberLabel(existingId, existingConfig)}" 使用` };
           }
         }
       }
@@ -409,12 +510,18 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
     const accountRef = resolveAccountRef(body);
     try {
       const ocProviderNameForValidation = 'ocProviderName' in body ? body.ocProviderName : undefined;
+      const embeddedAcpExecutablePathForValidation = resolveEmbeddedAcpExecutableOverride({
+        embeddedAcpExecutablePath: 'embeddedAcpExecutablePath' in body ? body.embeddedAcpExecutablePath : undefined,
+        embeddedAcpConfig: 'embeddedAcpConfig' in body ? body.embeddedAcpConfig : undefined,
+      });
       await validateAccountBindingOrThrow(
         projectRoot,
+        body.catId,
         body.client,
         accountRef,
         body.defaultModel,
         ocProviderNameForValidation,
+        embeddedAcpExecutablePathForValidation,
       );
       const resolvedAvatar = body.avatar ?? '/avatars/default.png';
       if (body.client === 'antigravity') {
@@ -472,6 +579,8 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           cli: body.cli ?? defaultCliForClient(body.client),
           ...(body.cliConfigArgs ? { cliConfigArgs: body.cliConfigArgs } : {}),
           ...(body.ocProviderName ? { ocProviderName: body.ocProviderName } : {}),
+          ...(body.embeddedAcpExecutablePath ? { embeddedAcpExecutablePath: body.embeddedAcpExecutablePath } : {}),
+          ...(body.embeddedAcpConfig ? { embeddedAcpConfig: body.embeddedAcpConfig } : {}),
         });
       }
     } catch (err) {
@@ -513,7 +622,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           if (existingId === request.params.id) continue; // skip self
           if (existingConfig.mentionPatterns.some((p: string) => p.toLowerCase() === normalized)) {
             reply.status(400);
-            return { error: `别名 "${pattern}" 已被成员 "${existingId}" 使用` };
+            return { error: `别名 "${pattern}" 已被成员 "${resolveMemberLabel(existingId, existingConfig)}" 使用` };
           }
         }
       }
@@ -531,11 +640,16 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
     const effectiveAccountRef =
       nextAccountRef !== undefined ? (nextAccountRef ?? undefined) : currentEffectiveAccountRef;
     const effectiveDefaultModel = body.defaultModel !== undefined ? body.defaultModel : currentCat.defaultModel;
+    const nextEmbeddedAcpExecutablePath = resolveEmbeddedAcpExecutableOverride(body);
+    const effectiveEmbeddedAcpExecutablePath =
+      nextEmbeddedAcpExecutablePath !== undefined ? nextEmbeddedAcpExecutablePath : currentCat.embeddedAcpExecutablePath;
     const providerConfigTouched =
       body.client !== undefined ||
       body.defaultModel !== undefined ||
       nextAccountRef !== undefined ||
-      body.ocProviderName !== undefined;
+      body.ocProviderName !== undefined ||
+      body.embeddedAcpExecutablePath !== undefined ||
+      body.embeddedAcpConfig !== undefined;
 
     if (providerConfigTouched) {
       try {
@@ -543,10 +657,12 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           body.ocProviderName !== undefined ? body.ocProviderName : currentCat.ocProviderName;
         await validateAccountBindingOrThrow(
           projectRoot,
+          request.params.id,
           effectiveClient,
           effectiveAccountRef,
           effectiveDefaultModel,
           effectiveOcProviderName,
+          effectiveEmbeddedAcpExecutablePath,
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -600,6 +716,16 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           ? body.ocProviderName === null
             ? { ocProviderName: undefined }
             : { ocProviderName: body.ocProviderName }
+          : {}),
+        ...(body.embeddedAcpExecutablePath !== undefined
+          ? body.embeddedAcpExecutablePath === null
+            ? { embeddedAcpExecutablePath: undefined }
+            : { embeddedAcpExecutablePath: body.embeddedAcpExecutablePath }
+          : {}),
+        ...(body.embeddedAcpConfig !== undefined
+          ? body.embeddedAcpConfig === null
+            ? { embeddedAcpConfig: null }
+            : { embeddedAcpConfig: body.embeddedAcpConfig }
           : {}),
       });
       const resolved = await reconcileCatRegistry(projectRoot, managedIdsBefore, opts.onCatalogChanged);

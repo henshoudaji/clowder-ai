@@ -41,7 +41,7 @@ describe('ThemeRootSync', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     useThemeStore.setState({
-      theme: 'default',
+      theme: 'business',
       isLoaded: true,
     });
   });
@@ -62,12 +62,12 @@ describe('ThemeRootSync', () => {
       root.render(React.createElement(ThemeRootSync));
     });
 
-    expect(document.documentElement.dataset.uiTheme).toBe('default');
+    expect(document.documentElement.dataset.uiTheme).toBe('business');
 
     await act(async () => {
-      useThemeStore.getState().setTheme('business');
+      useThemeStore.getState().setTheme('warm');
     });
 
-    expect(document.documentElement.dataset.uiTheme).toBe('business');
+    expect(document.documentElement.dataset.uiTheme).toBe('warm');
   });
 });

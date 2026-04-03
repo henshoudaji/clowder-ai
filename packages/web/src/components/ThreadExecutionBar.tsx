@@ -64,7 +64,7 @@ export function ThreadExecutionBar() {
   if (activeCats.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-2 py-1.5 text-xs border-b border-[#9B7EBD]/10 mx-auto w-[80%]">
+    <div className="hidden items-center gap-2 px-4 py-1.5 text-xs border-b border-[#9B7EBD]/10 mx-auto w-[80%]">
       <span className="text-gray-400 font-medium shrink-0">执行中</span>
       {activeCats.map(({ catId, startedAt }) => {
         const info = catDisplayMap.get(catId) ?? { label: catId, color: '#9B7EBD' };

@@ -1,6 +1,6 @@
 ---
 feature_ids: [F087]
-related_features: [F059, F075, F090, F096]
+related_features: [F059, F075, F096]
 topics: [onboarding, cvo, tutorial, gamification, open-source]
 doc_kind: spec
 created: 2026-03-08
@@ -11,7 +11,7 @@ created: 2026-03-08
 > **Status**: done | **Owner**: Ragdoll | **Completed**: 2026-03-12
 > **Priority**: P2
 > **Evolved from**: F059（开源计划 — clowder-ai 需要 onboarding 体验）
-> **Related**: F075（成就/排行榜系统）, F090（像素猫猫大作战）, F096（可交互富文本）
+> **Related**: F075（成就/排行榜系统）, F096（可交互富文本）
 
 ## Why
 
@@ -279,7 +279,6 @@ F087 的 Phase 0（选引导猫）和 Phase 4（任务选择）依赖 F096 Inter
 - **Evolved from**: F059（开源计划 — clowder-ai 需要 onboarding 体验）
 - **Blocked by**: F096（Interactive Rich Blocks — 任务选择/引导猫选择需要可交互富文本）
 - **Related**: F075（猫猫排行榜 — 成就/统计系统的真相源）
-- **Related**: F090（像素猫猫大作战 — 训练营候选任务之一）
 - clowder-ai 核心框架就绪后才能做训练营
 
 ## Risk

@@ -10,8 +10,9 @@ import {
   splitMentionPatterns,
   splitStrengthTags,
 } from './hub-cat-editor.model';
-import { SectionCard, SelectField, TextField } from './hub-cat-editor-fields';
+import { SectionCard, SelectField, TextAreaField, TextField } from './hub-cat-editor-fields';
 import type { ProfileItem } from './hub-provider-profiles.types';
+import { parseProviderEnvText } from './hub-provider-env';
 import { TagEditor } from './hub-tag-editor';
 
 type FormPatch = Partial<HubCatEditorFormState>;
@@ -266,7 +267,13 @@ function ComboField({
 }
 
 // Generate a hint showing what API endpoint the CLI will actually call
-function buildCallHint(client: string, profile: ProfileItem | undefined, model: string): string | null {
+function buildCallHint(
+  client: string,
+  profile: ProfileItem | undefined,
+  model: string,
+  options?: { embeddedAcpRuntime?: boolean },
+): string | null {
+  if (options?.embeddedAcpRuntime) return null;
   if (!profile || profile.builtin || !profile.baseUrl) return null;
   const base = profile.baseUrl.replace(/\/+$/, '');
   const hasV1Suffix = /\/v1$/i.test(base);
@@ -302,6 +309,7 @@ export function AccountSection({
   hasError,
   modelOptions,
   availableProfiles,
+  embeddedAcpRuntime = false,
   loadingProfiles,
   availableClientIds,
   clientLabels,
@@ -311,6 +319,7 @@ export function AccountSection({
   hasError?: boolean;
   modelOptions: string[];
   availableProfiles: ProfileItem[];
+  embeddedAcpRuntime?: boolean;
   loadingProfiles: boolean;
   /** When provided, only these client IDs are shown in the Client dropdown. */
   availableClientIds?: ReadonlySet<string>;
@@ -320,13 +329,16 @@ export function AccountSection({
 }) {
   const accountOptions = availableProfiles;
   const selectedProfile = availableProfiles.find((p) => p.id === form.accountRef);
-  const callHint = buildCallHint(form.client, selectedProfile, form.defaultModel);
+  const callHint = buildCallHint(form.client, selectedProfile, form.defaultModel, { embeddedAcpRuntime });
   const baseOptions = availableClientIds
     ? CLIENT_OPTIONS.filter((opt) => opt.value === 'acp' || availableClientIds.has(opt.value))
     : CLIENT_OPTIONS;
-  const filteredClientOptions = clientLabels
-    ? baseOptions.map((opt) => (clientLabels[opt.value] ? { ...opt, label: clientLabels[opt.value] } : opt))
-    : baseOptions;
+  const filteredClientOptions = baseOptions.map((opt) => {
+    const nextLabel = embeddedAcpRuntime && opt.value === 'acp'
+      ? 'Assistant Agent'
+      : clientLabels?.[opt.value] ?? opt.label;
+    return nextLabel === opt.label ? opt : { ...opt, label: nextLabel };
+  });
   const providerSuggestions = useMemo(
     () => buildProviderSuggestions(selectedProfile?.models ?? []),
     [selectedProfile?.models],
@@ -376,7 +388,7 @@ export function AccountSection({
                   .map((profile) => ({
                     value: profile.id,
                     label: profile.source === 'model_config'
-                      ? profile.displayName
+                      ? `${profile.displayName}（模型配置）`
                       : profile.builtin
                       ? `${profile.displayName}（内置）`
                       : profile.kind === 'acp'
@@ -409,7 +421,9 @@ export function AccountSection({
                 required
                 placeholder={
                   form.client === 'acp'
-                    ? '显示标签，可留如 agent-teams/default'
+                    ? embeddedAcpRuntime
+                      ? '模型标识符，如 gpt-5.4 或 glm-4.7'
+                      : '显示标签，可留如 agent-teams/default'
                     : form.client === 'opencode'
                     ? '例如 openai/gpt-5.4 或 openrouter/google/gemini-3-flash-preview'
                     : '模型标识符，如 claude-sonnet-4-5'
@@ -440,6 +454,53 @@ export function AccountSection({
           </>
         )}
       </div>
+    </SectionCard>
+  );
+}
+
+export function EmbeddedAcpConfigSection({
+  form,
+  onChange,
+}: {
+  form: HubCatEditorFormState;
+  onChange: (patch: FormPatch) => void;
+}) {
+  const envError =
+    form.embeddedAcpEnvText.trim().length > 0 && !parseProviderEnvText(form.embeddedAcpEnvText)
+      ? '环境变量格式无效'
+      : null;
+
+  return (
+    <SectionCard title="ACP 配置">
+      <TextField
+        label="EXE Path"
+        ariaLabel="EXE Path"
+        value={form.embeddedAcpExecutablePath ?? ''}
+        onChange={(value) => onChange({ embeddedAcpExecutablePath: value })}
+        placeholder="留空使用 tools/python/python.exe"
+      />
+      <TextField
+        label="ACP Args"
+        ariaLabel="ACP Args"
+        value={form.embeddedAcpArgs}
+        onChange={(value) => onChange({ embeddedAcpArgs: value })}
+        placeholder="留空使用 -m agent_teams gateway acp stdio"
+      />
+      <TextField
+        label="ACP CWD"
+        ariaLabel="ACP CWD"
+        value={form.embeddedAcpCwd}
+        onChange={(value) => onChange({ embeddedAcpCwd: value })}
+        placeholder="可选工作目录"
+      />
+      <TextAreaField
+        label="ACP Env"
+        ariaLabel="ACP Env"
+        value={form.embeddedAcpEnvText}
+        onChange={(value) => onChange({ embeddedAcpEnvText: value })}
+        placeholder="每行 KEY=value"
+      />
+      {envError ? <p className="text-xs text-red-600 sm:pl-[152px]">{envError}</p> : null}
     </SectionCard>
   );
 }

@@ -22,6 +22,11 @@ import { FeishuTokenManager } from './adapters/FeishuTokenManager.js';
 import { TelegramAdapter } from './adapters/TelegramAdapter.js';
 import { WeixinAdapter } from './adapters/WeixinAdapter.js';
 import { XiaoyiAdapter } from './adapters/XiaoyiAdapter.js';
+import {
+  type IConnectorAgentConfigStore,
+  MemoryConnectorAgentConfigStore,
+  RedisConnectorAgentConfigStore,
+} from './ConnectorAgentConfigStore.js';
 import { ConnectorCommandLayer } from './ConnectorCommandLayer.js';
 import {
   type IConnectorPermissionStore,
@@ -158,13 +163,15 @@ export interface ConnectorGatewayHandle {
   readonly webhookHandlers: Map<string, ConnectorWebhookHandler>;
   readonly weixinAdapter: InstanceType<typeof WeixinAdapter> | null;
   readonly permissionStore: IConnectorPermissionStore;
+  readonly agentConfigStore: IConnectorAgentConfigStore;
   readonly startWeixinPolling: () => void;
   stop(): Promise<void>;
 }
 
 export function loadConnectorGatewayConfig(): ConnectorGatewayConfig {
+  // Telegram is disabled in UI, always set to undefined to prevent startup errors
   return {
-    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+    telegramBotToken: undefined,
     feishuAppId: process.env.FEISHU_APP_ID,
     feishuAppSecret: process.env.FEISHU_APP_SECRET,
     feishuVerificationToken: process.env.FEISHU_VERIFICATION_TOKEN,
@@ -209,6 +216,12 @@ export async function startConnectorGateway(
     : new MemoryConnectorThreadBindingStore();
   const dedup = new InboundMessageDedup();
   log.info({ store: deps.redis ? 'redis' : 'memory' }, '[ConnectorGateway] Binding store initialized');
+
+  // Channel-level multi-agent config store
+  const agentConfigStore: IConnectorAgentConfigStore = deps.redis
+    ? new RedisConnectorAgentConfigStore(deps.redis)
+    : new MemoryConnectorAgentConfigStore();
+
   const adapters = new Map<string, IOutboundAdapter>();
   const webhookHandlers = new Map<string, ConnectorWebhookHandler>();
   const stopFns: Array<() => Promise<void>> = [];
@@ -279,25 +292,31 @@ export async function startConnectorGateway(
     adapters,
     mediaService,
     sttProvider,
+    agentConfigStore,
   });
 
   // ── Telegram (long polling) ──
-  if (hasTelegram) {
-    const telegram = new TelegramAdapter(config.telegramBotToken!, log);
-    adapters.set('telegram', telegram);
+  // Note: Telegram is disabled in UI but adapter code remains for potential future use
+  if (hasTelegram && config.telegramBotToken) {
+    try {
+      const telegram = new TelegramAdapter(config.telegramBotToken, log);
+      adapters.set('telegram', telegram);
 
-    telegram.startPolling(async (msg) => {
-      const attachments = msg.attachments?.map((a) => ({
-        type: a.type,
-        platformKey: a.telegramFileId,
-        ...(a.fileName ? { fileName: a.fileName } : {}),
-        ...(a.duration != null ? { duration: a.duration } : {}),
-      }));
-      await connectorRouter.route('telegram', msg.chatId, msg.text, msg.messageId, attachments);
-    });
+      telegram.startPolling(async (msg) => {
+        const attachments = msg.attachments?.map((a) => ({
+          type: a.type,
+          platformKey: a.telegramFileId,
+          ...(a.fileName ? { fileName: a.fileName } : {}),
+          ...(a.duration != null ? { duration: a.duration } : {}),
+        }));
+        await connectorRouter.route('telegram', msg.chatId, msg.text, msg.messageId, attachments);
+      });
 
-    stopFns.push(async () => telegram.stopPolling());
-    log.info('[ConnectorGateway] Telegram adapter started (long polling)');
+      stopFns.push(async () => telegram.stopPolling());
+      log.info('[ConnectorGateway] Telegram adapter started (long polling)');
+    } catch (err) {
+      log.warn({ err }, '[ConnectorGateway] Telegram adapter failed to start, skipping');
+    }
   }
 
   // ── Feishu (webhook or websocket) ──
@@ -560,10 +579,12 @@ export async function startConnectorGateway(
 
   // ── XiaoYi (华为小艺 A2A WebSocket) ──
   if (hasXiaoyi) {
-    const skMasked = config.xiaoyiSk!.length > 6
-      ? config.xiaoyiSk!.slice(0, 3) + '***' + config.xiaoyiSk!.slice(-3)
-      : '***';
-    log.info({ ak: config.xiaoyiAk, sk: skMasked, agentId: config.xiaoyiAgentId }, '[ConnectorGateway] XiaoYi credentials loaded');
+    const skMasked =
+      config.xiaoyiSk!.length > 6 ? config.xiaoyiSk!.slice(0, 3) + '***' + config.xiaoyiSk!.slice(-3) : '***';
+    log.info(
+      { ak: config.xiaoyiAk, sk: skMasked, agentId: config.xiaoyiAgentId },
+      '[ConnectorGateway] XiaoYi credentials loaded',
+    );
     const xiaoyi = new XiaoyiAdapter(log, {
       ak: config.xiaoyiAk!,
       sk: config.xiaoyiSk!,
@@ -645,6 +666,7 @@ export async function startConnectorGateway(
     webhookHandlers,
     weixinAdapter: weixin,
     permissionStore,
+    agentConfigStore,
     startWeixinPolling,
     async stop() {
       cleanupJob.stop();

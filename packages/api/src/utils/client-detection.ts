@@ -8,6 +8,12 @@
 import { execFile } from 'node:child_process';
 import { dareBundleAvailable } from '../domains/cats/services/agents/providers/DareAgentService.js';
 import { jiuwenClawBundleAvailable, resolveVendoredJiuwenClawExecutable } from './jiuwenclaw-paths.js';
+import {
+  bundledAgentTeamsRuntimeAvailable,
+  DEFAULT_EMBEDDED_AGENT_TEAMS_ARGS,
+  resolveBundledAgentTeamsExecutable,
+} from './agent-teams-bundle.js';
+import { resolveCatCafeHostRoot } from './cat-cafe-root.js';
 import { filterAllowedClients } from './client-visibility.js';
 
 type ClientId = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode' | 'antigravity' | 'relayclaw' | 'acp';
@@ -26,7 +32,11 @@ const CLIENT_COMMAND_MAP: ClientInfo[] = [
   { id: 'opencode', label: 'OpenCode', command: 'opencode' },
   { id: 'antigravity', label: 'Antigravity', command: 'antigravity' },
   { id: 'relayclaw', label: 'Assistant Agent', command: resolveVendoredJiuwenClawExecutable() },
-  { id: 'acp', label: 'ACP', command: 'agent-teams gateway acp stdio' },
+  {
+    id: 'acp',
+    label: 'ACP',
+    command: `${resolveBundledAgentTeamsExecutable(resolveCatCafeHostRoot(process.cwd()))} ${DEFAULT_EMBEDDED_AGENT_TEAMS_ARGS.join(' ')}`,
+  },
 ];
 
 export interface AvailableClient {
@@ -48,7 +58,7 @@ function commandExists(command: string): Promise<boolean> {
 }
 
 async function acpRuntimeAvailable(): Promise<boolean> {
-  return commandExists('agent-teams');
+  return bundledAgentTeamsRuntimeAvailable(resolveCatCafeHostRoot(process.cwd()));
 }
 
 function relayClawSidecarAvailable(): boolean {

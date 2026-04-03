@@ -1,13 +1,8 @@
-/**
- * Regression test: mobile sidebar auto-closes after creating a new conversation.
- * Verifies that createInProject success path calls onClose on narrow viewports.
- */
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadSidebar } from '../ThreadSidebar';
 
-// ── Mocks ─────────────────────────────────────────────────────
 const mockPush = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 
@@ -20,6 +15,7 @@ const mockStore: Record<string, unknown> = {
   threads: [],
   currentThreadId: 'default',
   setThreads: vi.fn(),
+  setCurrentThread: vi.fn(),
   setCurrentProject: vi.fn(),
   isLoadingThreads: false,
   setLoadingThreads: vi.fn(),
@@ -27,7 +23,9 @@ const mockStore: Record<string, unknown> = {
   getThreadState: () => ({ catStatuses: {}, unreadCount: 0 }),
   updateThreadPin: vi.fn(),
   updateThreadFavorite: vi.fn(),
+  threadStates: {},
 };
+
 vi.mock('@/stores/chatStore', () => {
   const hook = Object.assign(
     (selector?: (s: typeof mockStore) => unknown) => (selector ? selector(mockStore) : mockStore),
@@ -35,7 +33,12 @@ vi.mock('@/stores/chatStore', () => {
   );
   return { useChatStore: hook };
 });
+
 vi.mock('../TaskPanel', () => ({ TaskPanel: () => null }));
+vi.mock('../UserProfile', () => ({ UserProfile: () => null }));
+vi.mock('../DirectoryPickerModal', () => ({
+  DirectoryPickerModal: () => null,
+}));
 
 function jsonOk(data: unknown) {
   return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
@@ -58,17 +61,11 @@ describe('ThreadSidebar mobile auto-close', () => {
     root = createRoot(container);
     mockApiFetch.mockReset();
     mockPush.mockReset();
-    // Default: threads list returns empty
+    mockStore.currentThreadId = 'thread-1';
+    mockStore.setCurrentThread = vi.fn();
+    mockStore.setCurrentProject = vi.fn();
     mockApiFetch.mockImplementation((path: string) => {
       if (path === '/api/threads') return jsonOk({ threads: [] });
-      if (path === '/api/projects/cwd') return jsonOk({ path: '/test' });
-      if (path.startsWith('/api/projects/browse'))
-        return jsonOk({
-          current: '/test',
-          name: 'test',
-          parent: '/',
-          entries: [],
-        });
       return jsonOk({});
     });
   });
@@ -76,7 +73,6 @@ describe('ThreadSidebar mobile auto-close', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
-    vi.restoreAllMocks();
     Object.defineProperty(window, 'innerWidth', { value: originalInnerWidth, writable: true });
   });
 
@@ -91,8 +87,7 @@ describe('ThreadSidebar mobile auto-close', () => {
     });
   }
 
-  it('calls onClose after createInProject succeeds on mobile viewport', async () => {
-    // Simulate mobile viewport
+  it('calls onClose after pressing 新建会话 on mobile viewport', async () => {
     Object.defineProperty(window, 'innerWidth', { value: 375, writable: true });
 
     const onClose = vi.fn();
@@ -101,45 +96,20 @@ describe('ThreadSidebar mobile auto-close', () => {
     });
     await flush();
 
-    // Set up mock for thread creation
-    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/api/threads' && init?.method === 'POST') {
-        return jsonOk({ id: 'new-thread-123' });
-      }
-      if (path === '/api/threads') return jsonOk({ threads: [] });
-      return jsonOk({});
-    });
-
-    // Open the new-thread picker
-    const newBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('\u65b0\u5bf9\u8bdd'))!;
+    const newBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('新建会话'));
     expect(newBtn).toBeTruthy();
     act(() => {
-      newBtn.click();
-    });
-
-    // Select the lobby entry (F068-R7 two-step flow)
-    await flush();
-    const lobbyBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('\u5927\u5385'))!;
-    expect(lobbyBtn).toBeTruthy();
-    act(() => {
-      lobbyBtn.click();
-    });
-
-    // Confirm creation to trigger createInProject
-    const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('\u521b\u5efa\u5bf9\u8bdd'),
-    )!;
-    expect(confirmBtn).toBeTruthy();
-    act(() => {
-      confirmBtn.click();
+      (newBtn as HTMLButtonElement).click();
     });
     await flush();
 
+    expect(mockPush).toHaveBeenCalledWith('/');
+    expect(mockStore.setCurrentThread).toHaveBeenCalledWith('default');
+    expect(mockStore.setCurrentProject).toHaveBeenCalledWith('default');
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('does NOT call onClose after createInProject on desktop viewport', async () => {
-    // Simulate desktop viewport
+  it('does not call onClose after pressing 新建会话 on desktop viewport', async () => {
     Object.defineProperty(window, 'innerWidth', { value: 1024, writable: true });
 
     const onClose = vi.fn();
@@ -148,36 +118,16 @@ describe('ThreadSidebar mobile auto-close', () => {
     });
     await flush();
 
-    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/api/threads' && init?.method === 'POST') {
-        return jsonOk({ id: 'new-thread-456' });
-      }
-      if (path === '/api/threads') return jsonOk({ threads: [] });
-      return jsonOk({});
-    });
-
-    // Open picker
-    const newBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('\u65b0\u5bf9\u8bdd'))!;
+    const newBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('新建会话'));
+    expect(newBtn).toBeTruthy();
     act(() => {
-      newBtn.click();
+      (newBtn as HTMLButtonElement).click();
     });
     await flush();
 
-    // Select lobby
-    const lobbyBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('\u5927\u5385'))!;
-    act(() => {
-      lobbyBtn.click();
-    });
-
-    // Confirm creation (F068-R7 two-step flow)
-    const confirmBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('\u521b\u5efa\u5bf9\u8bdd'),
-    )!;
-    act(() => {
-      confirmBtn.click();
-    });
-    await flush();
-
+    expect(mockPush).toHaveBeenCalledWith('/');
+    expect(mockStore.setCurrentThread).toHaveBeenCalledWith('default');
+    expect(mockStore.setCurrentProject).toHaveBeenCalledWith('default');
     expect(onClose).not.toHaveBeenCalled();
   });
 });

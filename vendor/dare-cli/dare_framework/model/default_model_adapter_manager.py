@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 from typing import Any
 
 from dare_framework.config.types import Config, LLMConfig
@@ -11,6 +14,9 @@ from dare_framework.model.adapters.anthropic_adapter import AnthropicModelAdapte
 from dare_framework.model.adapters.huawei_modelarts_adapter import HuaweiModelArtsModelAdapter
 from dare_framework.model.adapters.openai_adapter import OpenAIModelAdapter
 from dare_framework.model.adapters.openrouter_adapter import OpenRouterModelAdapter
+
+_logger = logging.getLogger(__name__)
+_DIAG_ENV = "DARE_MODEL_ADAPTER_DIAG_LOG"
 
 
 class DefaultModelAdapterManager(IModelAdapterManager):
@@ -25,17 +31,32 @@ class DefaultModelAdapterManager(IModelAdapterManager):
             raise ValueError("DefaultModelAdapterManager requires a Config (in constructor or load_model_adapter).")
         llm = effective.llm
         adapter_name = _normalize_adapter_name(llm.adapter)
+        adapter: IModelAdapter | None = None
         if adapter_name == "openai":
-            return _build_openai_adapter(llm)
-        if adapter_name == "openrouter":
-            return _build_openrouter_adapter(llm)
-        if adapter_name == "anthropic":
-            return _build_anthropic_adapter(llm)
-        if adapter_name == "huawei-modelarts":
-            return _build_huawei_modelarts_adapter(llm)
-        raise ValueError(
-            f"Unsupported model adapter '{adapter_name}'. Supported adapters: openai, openrouter, anthropic, huawei-modelarts."
+            adapter = _build_openai_adapter(llm)
+        elif adapter_name == "openrouter":
+            adapter = _build_openrouter_adapter(llm)
+        elif adapter_name == "anthropic":
+            adapter = _build_anthropic_adapter(llm)
+        elif adapter_name == "huawei-modelarts":
+            adapter = _build_huawei_modelarts_adapter(llm)
+        else:
+            raise ValueError(
+                f"Unsupported model adapter '{adapter_name}'. Supported adapters: openai, openrouter, anthropic, huawei-modelarts."
+            )
+
+        _emit_model_adapter_diag(
+            {
+                "event": "adapter.loaded",
+                "requested_adapter": adapter_name,
+                "adapter_class": type(adapter).__name__,
+                "adapter_name": getattr(adapter, "name", None),
+                "model": llm.model,
+                "endpoint": llm.endpoint,
+                "has_api_key": bool(llm.api_key),
+            }
         )
+        return adapter
 
 
 
@@ -95,13 +116,49 @@ def _http_client_options_from_proxy(llm: LLMConfig) -> dict[str, Any]:
     if proxy.disabled:
         options["trust_env"] = False
         options["proxy"] = None
-        return options
-    if proxy.use_system_proxy:
-        options["trust_env"] = True
-    if proxy.http or proxy.https:
-        options["proxy"] = proxy.https or proxy.http
-        options.setdefault("trust_env", False)
+    else:
+        if proxy.use_system_proxy:
+            options["trust_env"] = True
+        if proxy.http or proxy.https:
+            options["proxy"] = proxy.https or proxy.http
+            options.setdefault("trust_env", False)
+    ssl_verify = _resolve_ssl_verify_option(llm)
+    if ssl_verify is not None:
+        options["verify"] = ssl_verify
     return options
+
+
+def _resolve_ssl_verify_option(llm: LLMConfig) -> bool | None:
+    env_value = _parse_bool(os.getenv("DARE_SSL_VERIFY"))
+    if env_value is not None:
+        return env_value
+    for key in ("ssl_verify", "sslVerify"):
+        value = _parse_bool(llm.extra.get(key))
+        if value is not None:
+            return value
+    return False
+
+
+def _parse_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return None
+
+
+def _emit_model_adapter_diag(payload: dict[str, Any]) -> None:
+    raw = os.getenv(_DIAG_ENV, "0").strip().lower()
+    if raw in {"0", "false", "off"}:
+        return
+    try:
+        _logger.debug("[model-adapter-manager] %s", json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        pass
 
 
 __all__ = ["DefaultModelAdapterManager"]

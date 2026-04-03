@@ -131,7 +131,7 @@ export function WeixinQrPanel({ configured }: { configured: boolean }) {
       )}
 
       {(qrState === 'waiting' || qrState === 'scanned') && qrUrl && (
-        <div className="flex flex-col items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div className="flex flex-col gap-3">
           <img src={qrUrl} alt="WeChat login QR code" className="w-48 h-48 rounded-lg" data-testid="weixin-qr-image" />
           {qrState === 'waiting' && (
             <div className="flex items-center gap-2 text-gray-500 text-xs">

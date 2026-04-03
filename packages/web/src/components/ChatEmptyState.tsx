@@ -4,9 +4,12 @@ interface ChatEmptyStateProps {
   bootcampCount: number;
   isCurrentBootcampThread: boolean;
   onOpenBootcampList: () => void;
+  onAgentsClick?: () => void;
+  onChannelsClick?: () => void;
 }
 
 interface EmptyStateCard {
+  id: 'agents' | 'channels';
   title: string;
   description: string;
   imageSrc: string;
@@ -17,14 +20,16 @@ const SHOW_BOOTCAMP_ENTRY = false;
 
 const heroCards: EmptyStateCard[] = [
   {
+    id: 'agents',
     title: '智能体配置',
     description: '设置智能体人设及记忆，让 OfficeClaw 更了解你。',
     imageSrc: '/images/chat-empty-agent.svg',
     imageAlt: '智能体配置',
   },
   {
+    id: 'channels',
     title: '一键接入 IM',
-    description: '一键接入飞书、钉钉、小艺、WeLink 渠道，无缝推进办公流程。',
+    description: '一键接入飞书、微信、钉钉、小艺渠道，无缝推进办公流程。',
     imageSrc: '/images/chat-empty-im.svg',
     imageAlt: '一键接入 IM',
   },
@@ -34,15 +39,26 @@ export function ChatEmptyState({
   bootcampCount,
   isCurrentBootcampThread,
   onOpenBootcampList,
+  onAgentsClick,
+  onChannelsClick,
 }: ChatEmptyStateProps) {
   const shouldShowBootcampEntry = SHOW_BOOTCAMP_ENTRY && !isCurrentBootcampThread;
+
+  const handleCardClick = (cardId: EmptyStateCard['id']) => {
+    if (cardId === 'agents') {
+      onAgentsClick?.();
+      return;
+    }
+
+    onChannelsClick?.();
+  };
 
   return (
     <section className="min-h-full px-4 py-10 sm:px-6" data-testid="chat-empty-state">
       <div className="mx-auto flex min-h-[calc(100vh-21rem)] max-w-4xl items-center justify-center">
         <div className="w-full text-center">
           <div className="mx-auto max-w-2xl">
-            <h2 className="text-[34px] font-semibold leading-tight tracking-[-0.03em] text-[#1F1F24] sm:text-[42px]">
+            <h2 className="text-[34px] font-semibold leading-tight tracking-[-0.03em] text-[#1F1F24] sm:text-[36px]">
               <span className="text-[#4D6BFF]">OfficeClaw</span>
               <span className="text-[#4D6BFF]">，</span>
               <span>制定目标自动规划执行</span>
@@ -54,9 +70,12 @@ export function ChatEmptyState({
 
           <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
             {heroCards.map((card) => (
-              <article
-                key={card.title}
-                className="rounded-[22px] border border-[#EEF0F5] bg-white px-6 py-6 text-left shadow-[0_14px_40px_rgba(17,24,39,0.05)] transition-transform duration-200 hover:-translate-y-0.5"
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => handleCardClick(card.id)}
+                className="rounded-[16px] border border-[#EEF0F5] bg-white px-6 py-6 text-left transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4D6BFF] focus-visible:ring-offset-2"
+                data-testid={`chat-empty-card-${card.id}`}
               >
                 <div className="flex items-start gap-4">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white">
@@ -67,7 +86,7 @@ export function ChatEmptyState({
                     <p className="mt-2 text-sm leading-6 text-[#8E8E98]">{card.description}</p>
                   </div>
                 </div>
-              </article>
+              </button>
             ))}
           </div>
 

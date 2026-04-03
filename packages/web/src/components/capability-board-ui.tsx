@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode } from 'react';
+import { NameInitialIcon } from './NameInitialIcon';
 
 export interface CapabilityBoardItem {
   id: string;
@@ -96,20 +97,35 @@ export function ExtensionIcon({ className }: { className?: string }) {
   );
 }
 
+function getSourceLabel(source: CapabilityBoardItem['source']): string {
+  if (source === 'cat-cafe') return '官方';
+  if (source === 'external') return '三方';
+  return '未知';
+}
+
 export function CapabilitySection({
-  icon,
   title,
-  subtitle,
+  subtitle: _subtitle,
+  headerSlot,
+  headerSlotClassName,
+  titleActionSlot,
+  showWhenEmpty,
+  emptyState,
   items,
   catFamilies,
   toggling,
   onToggle,
   onUninstall,
-  hideSkillMountStatus,
+  hideSkillMountStatus: _hideSkillMountStatus,
 }: {
   icon: ReactNode;
   title: string;
   subtitle: string;
+  headerSlot?: ReactNode;
+  headerSlotClassName?: string;
+  titleActionSlot?: ReactNode;
+  showWhenEmpty?: boolean;
+  emptyState?: ReactNode;
   items: CapabilityBoardItem[];
   catFamilies: CatFamily[];
   toggling: string | null;
@@ -117,43 +133,45 @@ export function CapabilitySection({
   onUninstall?: (id: string) => void;
   hideSkillMountStatus?: boolean;
 }) {
-  if (items.length === 0) return null;
+  if (items.length === 0 && !showWhenEmpty) return null;
 
   return (
-    <div className="mb-6">
-      <div className="mb-3 flex items-center gap-3 pl-1">
-        {icon}
-        <div>
-          <h3 className="text-[15px] font-bold tracking-wide text-[var(--text-primary)]">{title}</h3>
-          <p className="mt-0.5 text-xs font-medium text-[var(--text-muted)]">
-            {subtitle} · {items.length}
-          </p>
+    <div className="mb-6 pt-6">
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[20px] font-semibold">{title}</p>
+          {titleActionSlot ? <div className="shrink-0">{titleActionSlot}</div> : null}
         </div>
+        {headerSlot ? <div className={headerSlotClassName ?? 'mt-3'}>{headerSlot}</div> : null}
       </div>
-      <div className="grid grid-cols-2 gap-2.5">
-        {items.map((item) => (
-          <CapabilityCard
-            key={`${item.type}:${item.id}`}
-            item={item}
-            catFamilies={catFamilies}
-            toggling={toggling}
-            onToggle={onToggle}
-            onUninstall={onUninstall}
-            hideSkillMountStatus={hideSkillMountStatus}
-          />
-        ))}
-      </div>
+      {items.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <CapabilityCard
+              key={`${item.type}:${item.id}`}
+              item={item}
+              catFamilies={catFamilies}
+              toggling={toggling}
+              onToggle={onToggle}
+              onUninstall={onUninstall}
+              hideSkillMountStatus={_hideSkillMountStatus}
+            />
+          ))}
+        </div>
+      ) : (
+        emptyState ?? null
+      )}
     </div>
   );
 }
 
 function CapabilityCard({
   item,
-  catFamilies,
+  catFamilies: _catFamilies,
   toggling,
   onToggle,
   onUninstall,
-  hideSkillMountStatus,
+  hideSkillMountStatus: _hideSkillMountStatus,
 }: {
   item: CapabilityBoardItem;
   catFamilies: CatFamily[];
@@ -162,243 +180,60 @@ function CapabilityCard({
   onUninstall?: (id: string) => void;
   hideSkillMountStatus?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const isToggling = toggling === `${item.type}:${item.id}`;
-  const hasDetails =
-    (item.triggers && item.triggers.length > 0) ||
-    (item.tools && item.tools.length > 0) ||
-    item.type === 'mcp' ||
-    catFamilies.length > 0;
+  const sourceLabel = getSourceLabel(item.source);
+  const resolvedDescription = item.description?.trim() || '暂未提供技能描述。';
+  const showDeleteAction = item.source === 'external' && typeof onUninstall === 'function';
 
   return (
     <div
-      className={`ui-card group overflow-hidden transition-colors ${expanded ? 'border-[var(--border-accent)]' : 'hover:border-[var(--border-accent)]'}`}
+      className="ui-card group flex min-h-[194px] flex-col gap-4 p-5"
       data-testid={`capability-card-${item.type}-${item.id}`}
     >
-      <div className={`flex items-center gap-3 px-4 transition-all duration-300 ${expanded ? 'py-3' : 'py-2.5'}`}>
-        <button
-          type="button"
-          onClick={() => hasDetails && setExpanded((value) => !value)}
-          className={`flex min-w-0 flex-1 items-center gap-3 text-left ${hasDetails ? 'cursor-pointer group' : 'cursor-default'}`}
-        >
-          {hasDetails ? (
-            <div
-              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors ${
-                expanded
-                  ? 'bg-[var(--accent-soft)] text-[var(--text-accent)]'
-                  : 'bg-[var(--surface-card-muted)] text-[var(--text-muted)] group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--text-accent)]'
-              }`}
-            >
-              <svg
-                className={`h-3.5 w-3.5 transition-transform duration-300 ${expanded ? 'rotate-90' : ''}`}
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-          ) : (
-            <span className="w-6 shrink-0" />
-          )}
-
-          <div className="min-w-0 flex-1 py-0.5">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-semibold text-[var(--text-primary)]">{item.id}</span>
-              <TypeBadge type={item.type} />
-              {item.connectionStatus && <StatusDot status={item.connectionStatus} />}
-            </div>
-            {item.description && (
-              <p className="mt-1 max-w-[90%] truncate text-xs font-medium text-[var(--text-secondary)]">{item.description}</p>
-            )}
+      <div className="flex items-start gap-3">
+        <NameInitialIcon name={item.id} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <h3 className="truncate text-base font-semibold text-[var(--text-primary)]">{item.id}</h3>
+            {item.connectionStatus ? <StatusDot status={item.connectionStatus} /> : null}
           </div>
-        </button>
-
-        <div className="flex shrink-0 items-center gap-1 pl-2">
-          {item.source === 'external' && onUninstall && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onUninstall(item.id);
-              }}
-              title="卸载此 Skill"
-              className="rounded-[var(--radius-xs)] p-1 text-[var(--state-error-text)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--state-error-surface)]"
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </button>
-          )}
-          <ToggleSwitch enabled={item.enabled} disabled={isToggling} onChange={(value) => onToggle(item.id, item.type, value)} />
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <span className="ui-badge-muted">{item.category?.trim() || '其他'}</span>
+          </div>
         </div>
       </div>
 
-      <div className={`grid transition-all duration-300 ease-in-out ${expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-        <div className="overflow-hidden">
-          {expanded && (
-            <div className="space-y-3 border-t border-[var(--border-soft)] bg-[var(--surface-card-muted)] px-5 py-3.5 text-xs text-[var(--text-secondary)]">
-              {item.description && (
-                <div>
-                  <span className="font-medium text-[var(--text-secondary)]">描述:</span>
-                  <p className="mt-1 break-words leading-relaxed text-[var(--text-secondary)]">{item.description}</p>
-                </div>
-              )}
+      <p
+        className="line-clamp-2 min-h-[44px] text-sm leading-6 text-[var(--text-secondary)]"
+        title={resolvedDescription}
+      >
+        {resolvedDescription}
+      </p>
 
-              {item.type === 'mcp' && item.tools && item.tools.length > 0 && (
-                <div>
-                  <span className="font-medium text-[var(--text-secondary)]">Tools ({item.tools.length}):</span>
-                  <ul className="ml-3 mt-1 space-y-0.5">
-                    {item.tools.map((tool) => (
-                      <li key={tool.name} className="flex gap-2">
-                        <code className="text-[var(--text-accent)]">{tool.name}</code>
-                        {tool.description && <span className="break-words leading-relaxed text-[var(--text-muted)]">{tool.description}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {item.type === 'mcp' && (!item.tools || item.tools.length === 0) && (
-                <p className="py-1 italic text-[var(--text-muted)]">
-                  {item.connectionStatus === 'disconnected'
-                    ? '探活失败或服务不可达，请检查 MCP 配置。'
-                    : item.connectionStatus === 'connected'
-                      ? '已连接，但该 MCP 服务没有返回 tools。'
-                      : '当前未探活，或尚未对任意猫启用。'}
-                </p>
-              )}
-
-              {item.type === 'skill' && item.triggers && item.triggers.length > 0 && (
-                <div>
-                  <span className="mb-2 block font-medium text-[var(--text-secondary)]">触发词:</span>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {item.triggers.map((trigger) => (
-                      <span key={trigger} className="ui-badge-muted border-[var(--border-accent)] text-[var(--text-accent)]">
-                        &quot;{trigger}&quot;
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {item.type === 'skill' && (!item.triggers || item.triggers.length === 0) && (
-                <p className="py-1 italic text-[var(--text-muted)]">无特定触发词，由上下文自动匹配。</p>
-              )}
-
-              {!hideSkillMountStatus && item.type === 'skill' && item.source === 'cat-cafe' && item.mounts && (
-                <MountStatusBadges mounts={item.mounts} />
-              )}
-
-              {catFamilies.length > 0 && (
-                <CatFamilyToggles item={item} catFamilies={catFamilies} toggling={toggling} onToggle={onToggle} />
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CatFamilyToggles({
-  item,
-  catFamilies,
-  toggling,
-  onToggle,
-}: {
-  item: CapabilityBoardItem;
-  catFamilies: CatFamily[];
-  toggling: string | null;
-  onToggle: ToggleHandler;
-}) {
-  const [openFamily, setOpenFamily] = useState<string | null>(null);
-
-  return (
-    <div className="border-t border-[var(--border-soft)] pt-2">
-      <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">启用状态（按猫）</span>
-      <div className="mt-1.5 space-y-1">
-        {catFamilies.map((family) => {
-          const isOpen = openFamily === family.id;
-          const relevantCatIds = family.catIds.filter((catId) => catId in item.cats);
-          if (item.type === 'skill' && relevantCatIds.length === 0) return null;
-          const enabledCount = relevantCatIds.filter((catId) => item.cats[catId]).length;
-          return (
-            <div key={family.id} className="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--surface-panel)]">
+      <div className="mt-auto flex items-end justify-between gap-3">
+        <div className="min-h-5 text-xs leading-5">
+          {showDeleteAction ? (
+            <div className="relative">
+              <span className="text-[var(--text-muted)] transition-opacity duration-200 group-hover:opacity-0">
+                来源：{sourceLabel}
+              </span>
               <button
                 type="button"
-                onClick={() => setOpenFamily(isOpen ? null : family.id)}
-                className="flex w-full items-center justify-between px-3 py-1.5 text-left"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onUninstall?.(item.id);
+                }}
+                className="absolute left-0 top-0 opacity-0 text-[14px] font-bold text-[var(--text-accent)] transition-opacity duration-200 hover:underline group-hover:opacity-100"
               >
-                <span className="text-[12px] font-medium text-[var(--text-secondary)]">{family.name}</span>
-                <span className="text-[11px] text-[var(--text-muted)]">
-                  {enabledCount}/{relevantCatIds.length}
-                  <svg
-                    className={`ml-1 inline-block h-3 w-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </span>
+                删除
               </button>
-              {isOpen && (
-                <div className="space-y-1 px-3 pb-2">
-                  {family.catIds.map((catId) => {
-                    if (!(catId in item.cats)) {
-                      return (
-                        <div key={catId} className="flex items-center justify-between py-0.5">
-                          <span className="font-mono text-[11px] text-[var(--text-secondary)]">{catId}</span>
-                          <span className="select-none text-[12px] text-[var(--text-subtle)]" title="该 Skill 对此猫不适用">
-                            -
-                          </span>
-                        </div>
-                      );
-                    }
-                    const catEnabled = item.cats[catId] ?? false;
-                    const isCatToggling = toggling === `${item.type}:${item.id}:${catId}`;
-                    return (
-                      <div key={catId} className="flex items-center justify-between py-0.5">
-                        <span className="font-mono text-[11px] text-[var(--text-secondary)]">{catId}</span>
-                        <ToggleSwitch
-                          enabled={catEnabled}
-                          disabled={isCatToggling}
-                          size="sm"
-                          onChange={(value) => onToggle(item.id, item.type, value, 'cat', catId)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
-          );
-        })}
+          ) : (
+            <span className="text-[var(--text-muted)]">来源：{sourceLabel}</span>
+          )}
+        </div>
       </div>
     </div>
-  );
-}
-
-function TypeBadge({ type }: { type: 'mcp' | 'skill' }) {
-  return (
-    <span
-      className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-        type === 'mcp'
-          ? 'border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--text-accent)]'
-          : 'border border-[var(--border-default)] bg-[var(--surface-card-muted)] text-[var(--text-secondary)]'
-      }`}
-    >
-      {type === 'mcp' ? 'MCP' : 'Skill'}
-    </span>
   );
 }
 
@@ -411,100 +246,6 @@ export function StatusDot({ status }: { status: 'connected' | 'disconnected' | '
         : 'bg-[var(--text-muted)]';
   const label = status === 'connected' ? '已连接' : status === 'disconnected' ? '掉线' : '未知';
   return <span className={`inline-block h-2 w-2 rounded-full ${color}`} title={label} />;
-}
-
-function ToggleSwitch({
-  enabled,
-  disabled,
-  size = 'md',
-  onChange,
-}: {
-  enabled: boolean;
-  disabled?: boolean;
-  size?: 'sm' | 'md';
-  onChange: (value: boolean) => void;
-}) {
-  const isSm = size === 'sm';
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange(!enabled);
-      }}
-      disabled={disabled}
-      className={`relative box-content shrink-0 rounded-full border-[3px] border-transparent transition-[background-color,opacity] duration-300 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-accent)] focus-visible:ring-offset-2 ${
-        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:opacity-90'
-      } ${enabled ? 'bg-[var(--accent-primary)]' : 'bg-[var(--border-strong)]'} ${isSm ? 'h-3.5 w-7' : 'h-5 w-10'}`}
-    >
-      <span
-        className={`absolute top-0 flex items-center justify-center rounded-full bg-white ring-1 ring-black/5 transition-transform duration-300 ease-in-out ${
-          isSm ? 'h-3.5 w-3.5' : 'h-5 w-5'
-        } ${enabled ? (isSm ? 'translate-x-[14px]' : 'translate-x-[20px]') : 'translate-x-0'}`}
-      >
-        {enabled && !isSm && (
-          <svg className="h-2.5 w-2.5 text-[var(--text-accent)]" viewBox="0 0 12 12" fill="none">
-            <path
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3.5 6.5l2 2 3-4"
-            />
-          </svg>
-        )}
-      </span>
-    </button>
-  );
-}
-
-function MountStatusBadges({ mounts }: { mounts: Record<string, boolean> }) {
-  const knownProviders = [
-    { key: 'claude', label: 'Claude' },
-    { key: 'codex', label: 'Codex' },
-    { key: 'gemini', label: 'Gemini' },
-    { key: 'relayclaw', label: 'Assistant Agent' },
-  ];
-  const providers = [
-    ...knownProviders.filter(({ key }) => key in mounts),
-    ...Object.keys(mounts)
-      .filter((key) => !knownProviders.some((provider) => provider.key === key))
-      .map((key) => ({ key, label: key })),
-  ];
-
-  return (
-    <div>
-      <span className="mb-1.5 block font-medium text-[var(--text-secondary)]">挂载状态:</span>
-      <div className="flex flex-wrap gap-1.5">
-        {providers.map(({ key, label }) => {
-          const ok = mounts[key] ?? false;
-          return (
-            <span
-              key={key}
-              className={`inline-flex items-center gap-1 rounded-[var(--radius-xs)] border px-2 py-0.5 text-[11px] font-medium ${ok ? 'ui-status-success' : 'ui-status-error'}`}
-            >
-              {ok ? (
-                <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-                  <path
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 6.5l2 2 4-4.5"
-                  />
-                </svg>
-              ) : (
-                <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-                  <path stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M3.5 3.5l5 5M8.5 3.5l-5 5" />
-                </svg>
-              )}
-              {label}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 export function SkillHealthBanner({ health, items }: { health: SkillHealthSummary; items?: CapabilityBoardItem[] }) {
@@ -520,15 +261,20 @@ export function SkillHealthBanner({ health, items }: { health: SkillHealthSummar
     }));
 
   return (
-    <div className={`flex items-start gap-2.5 rounded-[var(--radius-md)] border px-3.5 py-2.5 text-xs ${allGood ? 'ui-status-success' : 'ui-status-warning'}`}>
-      <span className="mt-0.5 text-base leading-none">{allGood ? '✓' : '!'}</span>
+    <div
+      className={`rounded-[var(--radius-md)] border px-3.5 py-2.5 text-xs ${allGood ? 'ui-status-success' : 'ui-status-warning'}`}
+    >
       <div className="space-y-1">
         <div className="flex items-center gap-3">
           <span className={health.allMounted ? 'text-[var(--state-success-text)]' : 'text-[var(--state-warning-text)]'}>
             {health.allMounted ? '全部挂载正常' : '部分挂载异常'}
           </span>
-          <span className="text-[var(--text-subtle)]">·</span>
-          <span className={health.registrationConsistent ? 'text-[var(--state-success-text)]' : 'text-[var(--state-warning-text)]'}>
+          <span className="text-[var(--text-subtle)]">/</span>
+          <span
+            className={
+              health.registrationConsistent ? 'text-[var(--state-success-text)]' : 'text-[var(--state-warning-text)]'
+            }
+          >
             {health.registrationConsistent ? '注册一致' : '注册不一致'}
           </span>
         </div>
@@ -536,13 +282,20 @@ export function SkillHealthBanner({ health, items }: { health: SkillHealthSummar
           <div className="space-y-0.5 text-[var(--state-warning-text)]">
             {mountFailures.map((failure) => (
               <p key={failure.id}>
-                <code className="rounded-[var(--radius-xs)] bg-[var(--state-warning-surface)] px-1 text-[10px]">{failure.id}</code> — {failure.failed.join(', ')} 未挂载
+                <code className="rounded-[var(--radius-xs)] bg-[var(--state-warning-surface)] px-1 text-[10px]">
+                  {failure.id}
+                </code>{' '}
+                — {failure.failed.join(', ')} 未挂载
               </p>
             ))}
           </div>
         )}
-        {health.unregistered.length > 0 && <p className="text-[var(--state-warning-text)]">未注册: {health.unregistered.join(', ')}</p>}
-        {health.phantom.length > 0 && <p className="text-[var(--state-warning-text)]">幽灵项: {health.phantom.join(', ')}</p>}
+        {health.unregistered.length > 0 && (
+          <p className="text-[var(--state-warning-text)]">未注册: {health.unregistered.join(', ')}</p>
+        )}
+        {health.phantom.length > 0 && (
+          <p className="text-[var(--state-warning-text)]">幽灵项: {health.phantom.join(', ')}</p>
+        )}
       </div>
     </div>
   );
@@ -603,5 +356,3 @@ export function SectionIconExtension() {
     </div>
   );
 }
-
-

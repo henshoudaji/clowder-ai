@@ -29,7 +29,7 @@ export function MobileInputToolbar({
     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-colors disabled:opacity-30';
 
   return (
-    <div className="flex gap-2 px-4 pt-2 md:hidden">
+    <div className="flex gap-2 px-4 pt-2 md:hidden mx-auto w-[80%]">
       <button
         onClick={() => {
           onAttach();

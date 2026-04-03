@@ -50,6 +50,7 @@ export function CreateApiKeyProfileSection({
   modelAccessMode,
   defaultModelProfileRef,
   acpModelProfiles,
+  protocolOptions = PROTOCOL_OPTIONS,
   busy,
   onKindChange,
   onDisplayNameChange,
@@ -79,6 +80,7 @@ export function CreateApiKeyProfileSection({
   modelAccessMode: AcpModelAccessMode;
   defaultModelProfileRef: string;
   acpModelProfiles: AcpModelProfileItem[];
+  protocolOptions?: Array<{ value: ApiProtocol; label: string }>;
   busy: boolean;
   onKindChange: (kind: AcpProviderKind) => void;
   onDisplayNameChange: (value: string) => void;
@@ -111,7 +113,7 @@ export function CreateApiKeyProfileSection({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between text-left hidden"
+        className="flex w-full items-center justify-between text-left"
       >
         <h4 className="text-base font-semibold text-[#2E3440]">
           {kind === 'acp' ? '+ 新建 ACP Provider' : '+ 新建 API Key 账号'}
@@ -147,13 +149,13 @@ export function CreateApiKeyProfileSection({
                 value={args}
                 onChange={(e) => onArgsChange(e.target.value)}
                 rows={3}
-                placeholder="参数按空格分隔，例如 --directory /opt/workspace/agent-teams run agent-teams gateway acp stdio"
+                placeholder="参数按空格分隔，例如 -m agent_teams gateway acp stdio"
                 className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
               />
               <input
                 value={cwd}
                 onChange={(e) => onCwdChange(e.target.value)}
-                placeholder="可选 cwd，例如 /opt/workspace/agent-teams"
+                placeholder="可选 cwd"
                 className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
               />
               <textarea
@@ -196,7 +198,7 @@ export function CreateApiKeyProfileSection({
                 onChange={(e) => onProtocolChange(e.target.value as ApiProtocol)}
                 className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm"
               >
-                {PROTOCOL_OPTIONS.map((opt) => (
+                {protocolOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

@@ -5,7 +5,6 @@ import { useAvailableClients } from '@/hooks/useAvailableClients';
 import { useCatData } from '@/hooks/useCatData';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
-import { BrakeSettingsPanel } from './BrakeSettingsPanel';
 import {
   AccordionSection,
   ALL_TABS,
@@ -197,13 +196,12 @@ export function CatCafeHub() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={closeHub}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div
         ref={modalRef}
         tabIndex={-1}
         className="rounded-2xl shadow-xl max-w-4xl w-full mx-4 h-[85vh] flex flex-col outline-none"
         style={{ backgroundColor: '#FDF8F3' }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3" style={{ flexShrink: 0 }}>
@@ -270,7 +268,6 @@ export function CatCafeHub() {
             {tab === 'voice' && <VoiceSettingsPanel />}
             {tab === 'notify' && <PushSettingsPanel />}
             {tab === 'governance' && <HubGovernanceTab />}
-            {tab === 'health' && <BrakeSettingsPanel />}
             {tab === 'rescue' && <HubClaudeRescueSection />}
             {tab === 'leaderboard' && <HubLeaderboardTab />}
             {tab === 'skills' && <HubSkillsTab />}

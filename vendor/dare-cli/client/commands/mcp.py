@@ -27,8 +27,20 @@ def summarize_tools(agent: Any) -> dict[str, Any]:
         return {"mcp_tools": [], "local_tools": []}
     tool_defs = list_tool_defs()
     names = [_tool_name(item) for item in tool_defs]
-    mcp_tools = [name for name in names if ":" in name]
-    local_tools = [name for name in names if ":" not in name]
+    inspect_fn = getattr(agent, "inspect_mcp_tools", None)
+    if callable(inspect_fn):
+        try:
+            mcp_def_names = {_tool_name(item) for item in inspect_fn(tool_name=None)}
+            mcp_tools = [name for name in names if name in mcp_def_names]
+            local_tools = [name for name in names if name not in mcp_def_names]
+            return {"mcp_tools": mcp_tools, "local_tools": local_tools}
+        except Exception:
+            # Fall back to heuristic if MCP inspection is unavailable.
+            pass
+
+    # Compatibility heuristic for environments without inspect_mcp_tools().
+    mcp_tools = [name for name in names if ":" in name or "-" in name or name.count("_") >= 2]
+    local_tools = [name for name in names if name not in set(mcp_tools)]
     return {"mcp_tools": mcp_tools, "local_tools": local_tools}
 
 

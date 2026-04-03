@@ -36,8 +36,7 @@
   },
   "optionalDependencies": {
     "@ricky0123/vad-web": "^0.0.30",
-    "esbuild-wasm": "^0.27.3",
-    "phaser": "^3.90.0"
+    "esbuild-wasm": "^0.27.3"
   },
   "devDependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",

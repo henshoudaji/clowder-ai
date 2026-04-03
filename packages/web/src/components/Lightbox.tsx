@@ -74,13 +74,9 @@ export function Lightbox({
       aria-modal="true"
       aria-label={alt || 'Image preview'}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
     >
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation only, not interactive */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: container prevents backdrop close */}
       <div
         className="relative group max-w-[90vw] max-h-[90vh] flex flex-col items-center"
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"

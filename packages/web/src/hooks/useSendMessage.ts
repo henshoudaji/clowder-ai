@@ -3,17 +3,12 @@
 import { useCallback, useState } from 'react';
 import { useAgentMessages } from '@/hooks/useAgentMessages';
 import { useChatCommands } from '@/hooks/useChatCommands';
-import type { DeliveryMode } from '@/stores/chat-types';
+import type { DeliveryMode, WhisperOptions as SharedWhisperOptions } from '@/stores/chat-types';
 import { type ChatMessage as ChatMessageData, useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 
 export type UploadStatus = 'idle' | 'uploading' | 'failed';
-
-/** F35: Whisper options for private messages */
-export interface WhisperOptions {
-  visibility: 'whisper';
-  whisperTo: string[];
-}
+export type WhisperOptions = SharedWhisperOptions;
 
 export interface SendMessageOptions {
   resumeCatId?: string;

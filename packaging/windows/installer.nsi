@@ -137,11 +137,11 @@ FunctionEnd
 ; Force-kill every process related to $INSTDIR (launcher, node API, Redis).
 ; Uses env var to pass the path safely (avoids quoting issues with spaces/parens).
 !macro _ForceKillInstalledProcesses
-  ; 1. Kill desktop launcher by name — fastest and most reliable
-  nsExec::ExecToLog 'taskkill /F /IM OfficeClaw.exe'
+  ; 1. Kill desktop launcher by name only when it exists
+  nsExec::ExecToLog 'cmd /c tasklist /FI "IMAGENAME eq OfficeClaw.exe" | find /I "OfficeClaw.exe" >nul && taskkill /F /IM OfficeClaw.exe >nul 2>&1'
   Pop $0
-  ; 2. Kill Redis server (image name — may not be under $INSTDIR on PATH)
-  nsExec::ExecToLog 'taskkill /F /IM redis-server.exe'
+  ; 2. Kill Redis server by name only when it exists
+  nsExec::ExecToLog 'cmd /c tasklist /FI "IMAGENAME eq redis-server.exe" | find /I "redis-server.exe" >nul && taskkill /F /IM redis-server.exe >nul 2>&1'
   Pop $0
   ; 3. Kill all node.exe processes whose executable path starts with $INSTDIR
   ;    (covers start-entry, API server, Next.js — anything spawned from tools\node)
@@ -163,19 +163,19 @@ FunctionEnd
 ; Delete all managed dirs/files in $INSTDIR, preserving user-data (.cat-cafe, data, logs, .env, cat-config.json).
 ; Uses cmd /c rd /s /q for speed — handles tens of thousands of files near-instantly.
 !macro _CleanupManagedPayload
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\packages"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\packages" rd /s /q "$INSTDIR\packages"'
   Pop $0
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\tools"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\tools" rd /s /q "$INSTDIR\tools"'
   Pop $0
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\vendor"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\vendor" rd /s /q "$INSTDIR\vendor"'
   Pop $0
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\scripts"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\scripts" rd /s /q "$INSTDIR\scripts"'
   Pop $0
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\docs"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\docs" rd /s /q "$INSTDIR\docs"'
   Pop $0
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\cat-cafe-skills"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\cat-cafe-skills" rd /s /q "$INSTDIR\cat-cafe-skills"'
   Pop $0
-  nsExec::ExecToLog 'cmd /c rd /s /q "$INSTDIR\installer-seed"'
+  nsExec::ExecToLog 'cmd /c if exist "$INSTDIR\installer-seed" rd /s /q "$INSTDIR\installer-seed"'
   Pop $0
   Delete "$INSTDIR\.clowder-release.json"
   Delete "$INSTDIR\.env.example"
@@ -230,9 +230,11 @@ Function WriteUninstallRegistry
 FunctionEnd
 
 Section "Install"
+  DetailPrint "正在准备安装环境..."
   Call CloseRunningServices
   CreateDirectory "$INSTDIR"
   Call CleanupManagedPayload
+  DetailPrint "安装环境就绪..."
 
   ; Extract payload tar to a temp location then unpack via Windows tar.exe
   DetailPrint "正在释放安装文件..."

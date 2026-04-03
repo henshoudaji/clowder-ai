@@ -4,7 +4,6 @@ export { authorizationRoutes } from './authorization.js';
 export { availableClientsRoutes } from './available-clients.js';
 export { backlogRoutes } from './backlog.js';
 export { bootcampRoutes } from './bootcamp.js';
-export { brakeRoutes } from './brake.js';
 export { callbackAuthRoutes } from './callback-auth.js';
 export { registerCallbackDocsRoutes } from './callback-docs-routes.js';
 export { callbacksRoutes } from './callbacks.js';

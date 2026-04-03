@@ -1,4 +1,5 @@
 ﻿import { useTheme } from '@/hooks/useTheme';
+import { useCatData } from '@/hooks/useCatData';
 import { HubButton } from './HubButton';
 
 interface ChatContainerHeaderProps {
@@ -6,6 +7,7 @@ interface ChatContainerHeaderProps {
   onToggleSidebar: () => void;
   threadId: string;
   authPendingCount: number;
+  targetCats: string[];
   viewMode: 'single' | 'split';
   onToggleViewMode: () => void;
   onOpenMobileStatus: () => void;
@@ -24,6 +26,7 @@ export function ChatContainerHeader({
   threadId: _threadId,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   authPendingCount: _authPendingCount,
+  targetCats,
   // F099/OQ-4: viewMode toggle hidden - candidate for removal (KD-7)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   viewMode: _viewMode,
@@ -34,10 +37,22 @@ export function ChatContainerHeader({
   defaultCatId: _defaultCatId,
 }: ChatContainerHeaderProps) {
   const { theme, toggleTheme } = useTheme();
+  const { getCatById } = useCatData();
+  const visibleCats = targetCats.map((id) => ({ id, cat: getCatById(id) })).filter((entry) => !!entry.cat);
 
   return (
     <header className="safe-area-top relative h-0 overflow-visible">
-      <div className="absolute right-5 top-2 z-20 flex items-center gap-1">
+      <div className="absolute right-5 top-2 z-20 hidden items-center gap-1">
+        {visibleCats.length > 0 && (
+          <div className="mr-2 hidden items-center gap-2 md:flex">
+            {visibleCats.map(({ id, cat }) => (
+              <div key={id} className="flex items-center gap-2" title={cat!.displayName}>
+                <img src={cat!.avatar} alt={cat!.displayName} className="h-6 w-6 rounded-full" />
+                <span className="text-sm text-[#191919]">{cat!.displayName}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           onClick={onOpenMobileStatus}
@@ -54,16 +69,16 @@ export function ChatContainerHeader({
           </svg>
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 hidden">
           <HubButton />
           <button
             type="button"
             onClick={toggleTheme}
             className="ui-icon-button"
-            title={theme === 'default' ? '切换到商务主题' : '切换到默认主题'}
-            aria-label={theme === 'default' ? 'Switch to business theme' : 'Switch to default theme'}
+            title={theme === 'warm' ? '切换到商务主题' : '切换到暖色主题'}
+            aria-label={theme === 'warm' ? 'Switch to business theme' : 'Switch to warm theme'}
           >
-            {theme === 'default' ? (
+            {theme === 'warm' ? (
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <path d="M9 11h6M9 15h6M9 7h6" />

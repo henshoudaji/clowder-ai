@@ -418,7 +418,6 @@ describe('HubAddMemberWizard', () => {
     expect(container.textContent).not.toContain('Huawei MaaS');
     expect(mockApiFetch.mock.calls.some(([path]) => path === '/api/provider-profiles')).toBe(false);
   });
-
   it('keeps known clients visible even when their local CLI is unavailable', async () => {
     mockApiFetch.mockImplementation((path: string) => {
       if (path === '/api/cats') {

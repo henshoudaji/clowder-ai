@@ -1,6 +1,6 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 
-export type ThemeType = 'default' | 'business';
+export type ThemeType = 'warm' | 'business';
 
 const THEME_STORAGE_KEY = 'clowder-ai-theme';
 
@@ -13,7 +13,7 @@ interface ThemeStore {
 }
 
 export const useThemeStore = create<ThemeStore>((set, get) => ({
-  theme: 'default',
+  theme: 'business',
   isLoaded: false,
 
   setTheme: (newTheme: ThemeType) => {
@@ -23,13 +23,16 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
 
   toggleTheme: () => {
     const { theme } = get();
-    const newTheme = theme === 'default' ? 'business' : 'default';
+    const newTheme = theme === 'business' ? 'warm' : 'business';
     get().setTheme(newTheme);
   },
 
   initializeTheme: () => {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeType | null;
-    const theme = savedTheme === 'default' || savedTheme === 'business' ? savedTheme : 'default';
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    const theme: ThemeType = savedTheme === 'warm' ? 'warm' : 'business';
+    if (savedTheme === 'default') {
+      localStorage.setItem(THEME_STORAGE_KEY, 'business');
+    }
     set({ theme, isLoaded: true });
   },
 }));

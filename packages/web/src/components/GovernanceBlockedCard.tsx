@@ -6,6 +6,7 @@ interface GovernanceBlockedCardProps {
   projectPath: string;
   reasonKind: 'needs_bootstrap' | 'needs_confirmation' | 'files_missing';
   invocationId?: string;
+  onResolved?: () => void;
 }
 
 const REASON_LABELS: Record<string, string> = {
@@ -16,7 +17,7 @@ const REASON_LABELS: Record<string, string> = {
 
 type CardState = 'idle' | 'confirming' | 'retrying' | 'done' | 'error';
 
-export function GovernanceBlockedCard({ projectPath, reasonKind, invocationId }: GovernanceBlockedCardProps) {
+export function GovernanceBlockedCard({ projectPath, reasonKind, invocationId, onResolved }: GovernanceBlockedCardProps) {
   const [state, setState] = useState<CardState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -62,11 +63,12 @@ export function GovernanceBlockedCard({ projectPath, reasonKind, invocationId }:
       }
 
       setState('done');
+      onResolved?.();
     } catch {
       setState('error');
       setErrorMsg('网络错误');
     }
-  }, [projectPath, invocationId]);
+  }, [projectPath, invocationId, onResolved]);
 
   const dirName = projectPath.split(/[/\\]/).pop() ?? projectPath;
 

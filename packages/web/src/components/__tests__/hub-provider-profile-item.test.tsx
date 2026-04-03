@@ -293,7 +293,18 @@ describe('HubProviderProfileItem', () => {
     const envInput = container.querySelector(
       'textarea[placeholder*="每行 KEY=value；留空保持现有值"]',
     ) as HTMLTextAreaElement | null;
+    const argsInput = container.querySelector('textarea[placeholder*="参数按空格分隔"]') as HTMLTextAreaElement | null;
     expect(envInput).not.toBeNull();
+    expect(argsInput).not.toBeNull();
+    await act(async () => {
+      argsInput?.dispatchEvent(new Event('focus', { bubbles: true }));
+      const argsDescriptor = argsInput
+        ? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(argsInput), 'value')
+        : undefined;
+      argsDescriptor?.set?.call(argsInput, '--directory "/opt/workspace/agent teams" run agent-teams gateway acp stdio');
+      argsInput?.dispatchEvent(new Event('input', { bubbles: true }));
+      argsInput?.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     await act(async () => {
       envInput?.dispatchEvent(new Event('focus', { bubbles: true }));
       const descriptor = envInput
@@ -311,7 +322,7 @@ describe('HubProviderProfileItem', () => {
     expect(onSave.mock.calls[0]![0]).toMatchObject({
       displayName: 'Agent Teams Local',
       command: 'uv',
-      args: ['--directory', '/opt/workspace/agent-teams', 'run', 'agent-teams', 'gateway', 'acp', 'stdio'],
+      args: ['--directory', '/opt/workspace/agent teams', 'run', 'agent-teams', 'gateway', 'acp', 'stdio'],
       cwd: '/opt/workspace/agent-teams',
       env: {
         ACP_TRACE_STDIO: '1',

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 
 describe('buildACPSubprocessEnv', () => {
   it('merges custom ACP env overrides while blocking reserved keys', async () => {
@@ -68,6 +68,70 @@ describe('supportsACPStdioMcpFromInitializeResult', () => {
 
     assert.equal(supportsACPStdioMcpFromInitializeResult(undefined), true);
     assert.equal(supportsACPStdioMcpFromInitializeResult({}), true);
+  });
+});
+
+describe('summarizeACPSessionParamsForLog', () => {
+  it('emits only a safe ACP session summary without model profile details', async () => {
+    const { summarizeACPSessionParamsForLog } = await import(
+      '../dist/domains/cats/services/agents/providers/ACPAgentService.js'
+    );
+
+    const summary = summarizeACPSessionParamsForLog(
+      {
+        cwd: '/opt/workspace/hello',
+        mcpServers: [{ id: 'cat-cafe', transport: 'acp' }],
+        modelProfileOverride: {
+          name: 'default',
+          model: 'glm-5',
+          baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+          apiKey: 'secret',
+        },
+      },
+      {
+        agentCapabilities: {
+          mcpCapabilities: {
+            acp: true,
+          },
+        },
+      },
+    );
+
+    assert.deepEqual(summary, {
+      cwd: '/opt/workspace/hello',
+      mcpServersCount: 1,
+      hasModelProfileOverride: true,
+      mcpTransport: 'acp',
+    });
+    assert.equal('modelProfileOverride' in summary, false);
+    assert.equal('initializeResult' in summary, false);
+  });
+
+  it('handles sessions without model overrides or supported MCP transport', async () => {
+    const { summarizeACPSessionParamsForLog } = await import(
+      '../dist/domains/cats/services/agents/providers/ACPAgentService.js'
+    );
+
+    assert.deepEqual(
+      summarizeACPSessionParamsForLog(
+        {
+          mcpServers: [],
+        },
+        {
+          agentCapabilities: {
+            mcpCapabilities: {
+              http: true,
+              sse: true,
+            },
+          },
+        },
+      ),
+      {
+        mcpServersCount: 0,
+        hasModelProfileOverride: false,
+        mcpTransport: null,
+      },
+    );
   });
 });
 
@@ -727,6 +791,190 @@ process.stdin.on('data', (chunk) => {
   });
 });
 
+
+describe('ACPAgentService cancellation', () => {
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  async function withFakeACPAbortAgent(testFn) {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'acp-agent-service-abort-'));
+    const logFile = path.join(tempDir, 'methods.json');
+    const scriptFile = path.join(tempDir, 'fake-acp-agent-abort.mjs');
+    const script = `
+import { appendFileSync } from 'node:fs';
+
+const logFile = process.env.ACP_TEST_LOG_FILE;
+let buffer = '';
+
+function log(payload) {
+  appendFileSync(logFile, \`\${JSON.stringify(payload)}\\n\`);
+}
+
+function write(message) {
+  const payload = Buffer.from(JSON.stringify(message), 'utf8');
+  process.stdout.write(\`Content-Length: \${payload.length}\\r\\n\\r\\n\`);
+  process.stdout.write(payload);
+}
+
+function handle(message) {
+  if (!message || typeof message !== 'object') return;
+  if (typeof message.method !== 'string') return;
+  const params = message.params && typeof message.params === 'object' ? message.params : {};
+  log({ method: message.method });
+  if (message.method === 'initialize') {
+    write({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: {
+        protocolVersion: 1,
+        agentCapabilities: {
+          loadSession: true,
+          promptCapabilities: { audio: false, embeddedContext: false, image: false },
+          mcpCapabilities: { http: true, sse: true },
+        },
+      },
+    });
+    return;
+  }
+  if (message.method === 'session/new' || message.method === 'session/load') {
+    write({ jsonrpc: '2.0', id: message.id, result: { sessionId: params.sessionId || 'sess-test' } });
+    return;
+  }
+  if (message.method === 'session/prompt') {
+    setTimeout(() => process.exit(0), 300);
+    return;
+  }
+  if (message.method === 'session/cancel') {
+    setTimeout(() => process.exit(0), 10);
+    return;
+  }
+  write({ jsonrpc: '2.0', id: message.id, result: {} });
+}
+
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  while (true) {
+    const headerEnd = buffer.indexOf('\\r\\n\\r\\n');
+    if (headerEnd === -1) break;
+    const header = buffer.slice(0, headerEnd);
+    const match = header.match(/Content-Length:\\s*(\\d+)/i);
+    if (!match) {
+      buffer = buffer.slice(headerEnd + 4);
+      continue;
+    }
+    const length = Number.parseInt(match[1], 10);
+    const bodyStart = headerEnd + 4;
+    if (buffer.length < bodyStart + length) break;
+    const body = buffer.slice(bodyStart, bodyStart + length);
+    buffer = buffer.slice(bodyStart + length);
+    handle(JSON.parse(body));
+  }
+});
+`;
+    await writeFile(scriptFile, script);
+    try {
+      await testFn({ logFile, scriptFile });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  it('does not create an internal AbortSignal timeout for ACP turns', async () => {
+    const timeoutMock = mock.method(AbortSignal, 'timeout', () => {
+      throw new Error('AbortSignal.timeout should not be called by ACPAgentService');
+    });
+
+    const { ACPAgentService } = await import('../dist/domains/cats/services/agents/providers/ACPAgentService.js');
+    const service = new ACPAgentService({ catId: 'codex' });
+    const providerProfile = {
+      id: 'agent-teams-test',
+      kind: 'acp',
+      protocol: 'acp',
+      authType: 'none',
+      modelAccessMode: 'bring_your_own_key',
+      command: process.execPath,
+      args: ['-e', 'process.exit(0)'],
+      cwd: process.cwd(),
+    };
+
+    const messages = [];
+    for await (const msg of service.invoke('fresh prompt', { providerProfile })) {
+      messages.push(msg);
+    }
+
+    assert.equal(timeoutMock.mock.calls.length, 0);
+    assert.equal(messages.some((msg) => msg.type === 'error'), true);
+  });
+
+  it('respects caller abort signal for cancellation', async () => {
+    await withFakeACPAbortAgent(async ({ logFile, scriptFile }) => {
+      const controller = new AbortController();
+      const { ACPAgentService } = await import('../dist/domains/cats/services/agents/providers/ACPAgentService.js');
+      const service = new ACPAgentService({ catId: 'codex' });
+      const providerProfile = {
+        id: 'agent-teams-test',
+        kind: 'acp',
+        protocol: 'acp',
+        authType: 'none',
+        modelAccessMode: 'bring_your_own_key',
+        command: process.execPath,
+        args: [scriptFile],
+        cwd: process.cwd(),
+        env: { ACP_TEST_LOG_FILE: logFile },
+      };
+
+      setTimeout(() => controller.abort(), 50);
+      const messages = [];
+      for await (const msg of service.invoke('fresh prompt', {
+        providerProfile,
+        sessionId: 'sess-test',
+        signal: controller.signal,
+      })) {
+        messages.push(msg);
+      }
+
+      assert.equal(messages.some((msg) => msg.type === 'session_init'), true);
+      assert.equal(messages.some((msg) => msg.type === 'error'), false);
+      assert.equal(messages.at(-1)?.type, 'done');
+    });
+  });
+
+  it('handles a pre-aborted caller signal without emitting an error', async () => {
+    await withFakeACPAbortAgent(async ({ logFile, scriptFile }) => {
+      const controller = new AbortController();
+      controller.abort();
+      const { ACPAgentService } = await import('../dist/domains/cats/services/agents/providers/ACPAgentService.js');
+      const service = new ACPAgentService({ catId: 'codex' });
+      const providerProfile = {
+        id: 'agent-teams-test',
+        kind: 'acp',
+        protocol: 'acp',
+        authType: 'none',
+        modelAccessMode: 'bring_your_own_key',
+        command: process.execPath,
+        args: [scriptFile],
+        cwd: process.cwd(),
+        env: { ACP_TEST_LOG_FILE: logFile },
+      };
+
+      const messages = [];
+      for await (const msg of service.invoke('fresh prompt', {
+        providerProfile,
+        sessionId: 'sess-test',
+        signal: controller.signal,
+      })) {
+        messages.push(msg);
+      }
+
+      assert.equal(messages.some((msg) => msg.type === 'session_init'), true);
+      assert.equal(messages.some((msg) => msg.type === 'error'), false);
+      assert.equal(messages.at(-1)?.type, 'done');
+    });
+  });
+});
+
 describe('ACP cwd routing', () => {
   async function withFakeAcpCwdAgent(testFn) {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'acp-agent-service-cwd-'));
@@ -927,6 +1175,38 @@ describe('buildACPModelProfileOverridePayload', () => {
         model: 'gpt-5.3-codex',
         baseUrl: 'https://api.example.com/v1',
         apiKey: 'sk-test',
+      },
+    );
+  });
+
+  it('includes headers when the runtime ACP model profile defines them', async () => {
+    const { buildACPModelProfileOverridePayload } = await import(
+      '../dist/domains/cats/services/agents/providers/acp-model-profile-override.js'
+    );
+
+    assert.deepEqual(
+      buildACPModelProfileOverridePayload({
+        id: 'huawei-default',
+        displayName: 'Huawei Default',
+        provider: 'openai_compatible',
+        model: 'glm-5',
+        baseUrl: 'https://api.modelarts-maas.com/v2',
+        apiKey: 'huawei-maas-session',
+        headers: {
+          Authorization: 'Basic abc123',
+        },
+        createdAt: '2026-03-27T00:00:00.000Z',
+        updatedAt: '2026-03-27T00:00:00.000Z',
+      }),
+      {
+        name: 'default',
+        provider: 'openai_compatible',
+        model: 'glm-5',
+        baseUrl: 'https://api.modelarts-maas.com/v2',
+        apiKey: 'huawei-maas-session',
+        headers: {
+          Authorization: 'Basic abc123',
+        },
       },
     );
   });

@@ -55,6 +55,24 @@ const contextBudgetSchema = z.object({
 const mentionPatternSchema = z.string().min(2).regex(/^@/, 'mentionPattern must start with @');
 
 const colorSchema = z.object({ primary: z.string(), secondary: z.string() });
+const embeddedAcpConfigSchema = z
+  .object({
+    executablePath: z.string().min(1).optional(),
+    args: z.array(z.string().min(1)).optional(),
+    cwd: z.string().min(1).optional(),
+    env: z.record(z.string().min(1), z.string()).optional(),
+    provider: z.enum(['openai_compatible', 'bigmodel', 'minimax', 'echo']).optional(),
+    baseUrl: z.string().min(1).optional(),
+    apiKey: z.string().min(1).optional(),
+    headers: z.record(z.string().min(1), z.string()).optional(),
+    sslVerify: z.boolean().nullable().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    topP: z.number().min(0).max(1).optional(),
+    maxTokens: z.number().positive().optional(),
+    contextWindow: z.number().positive().optional(),
+    connectTimeoutSeconds: z.number().positive().optional(),
+  })
+  .optional();
 
 const catVariantSchema = z.object({
   id: z.string().min(1),
@@ -71,6 +89,8 @@ const catVariantSchema = z.object({
   commandArgs: z.array(z.string().min(1)).optional(), // F127: explicit bridge args (e.g. Antigravity)
   cliConfigArgs: z.array(z.string().min(1)).optional(), // F127: extra CLI args per member
   ocProviderName: z.string().min(1).optional(), // F189: opencode custom provider name (e.g. "maas")
+  embeddedAcpExecutablePath: z.string().min(1).optional(),
+  embeddedAcpConfig: embeddedAcpConfigSchema,
   roleDescription: z.string().min(1).optional(), // F127 review fix: allow variant-scoped roleDescription override
   sessionChain: z.boolean().optional(), // F127 review fix: allow variant-scoped sessionChain override
   personality: z.string().optional(),
@@ -441,6 +461,10 @@ export function toAllCatConfigs(config: CatCafeConfig): Record<string, CatConfig
           : {}),
         ...(variant.contextBudget != null ? { contextBudget: variant.contextBudget } : {}),
         ...(variant.ocProviderName != null ? { ocProviderName: variant.ocProviderName } : {}),
+        ...(variant.embeddedAcpExecutablePath != null
+          ? { embeddedAcpExecutablePath: variant.embeddedAcpExecutablePath }
+          : {}),
+        ...(variant.embeddedAcpConfig != null ? { embeddedAcpConfig: variant.embeddedAcpConfig } : {}),
         roleDescription: variant.roleDescription ?? breed.roleDescription,
         personality: variant.personality ?? defaultVariant?.personality ?? '',
         breedId: breed.id,

@@ -90,8 +90,18 @@ export function validateRuntimeProviderBinding(
   provider: CatProvider,
   profile: RuntimeProviderProfile,
   defaultModel?: string | null,
+  options?: { embeddedAcpRuntime?: boolean },
 ): string | null {
   if (provider === 'acp') {
+    if (options?.embeddedAcpRuntime) {
+      if (profile.authType !== 'api_key' || profile.protocol !== 'openai') {
+        return 'client "acp" built-in Agent Teams runtime requires an OpenAI-compatible API key provider profile';
+      }
+      if (profile.kind === 'builtin') {
+        return 'client "acp" built-in Agent Teams runtime does not support builtin OAuth accounts';
+      }
+      return null;
+    }
     if (profile.kind !== 'acp' || profile.authType !== 'none' || profile.protocol !== 'acp') {
       return 'client "acp" requires an ACP provider profile';
     }

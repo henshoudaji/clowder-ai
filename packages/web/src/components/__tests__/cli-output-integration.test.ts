@@ -56,7 +56,7 @@ describe('ChatMessage CLI Output integration', () => {
       root.render(React.createElement(ChatMessage, { message: msg, getCatById }));
     });
     const text = container.textContent ?? '';
-    expect(text).toContain('CLI Output');
+    expect(text).toContain('已执行1次工具调用');
     expect(text).not.toContain('💭 心里话');
   });
 
@@ -75,11 +75,9 @@ describe('ChatMessage CLI Output integration', () => {
     act(() => {
       root.render(React.createElement(ChatMessage, { message: msg, getCatById }));
     });
-    const buttons = Array.from(container.querySelectorAll('button'));
-    // Thinking should be independent
-    expect(buttons.some((b) => b.textContent?.includes('Thinking'))).toBe(true);
+    expect(container.querySelector('[data-testid="thinking-toggle"]')?.textContent).toContain('完成深度思考');
     // CLI block should also exist
-    expect(container.textContent).toContain('CLI Output');
+    expect(container.textContent).toContain('已执行1次工具调用');
   });
 
   it('callback origin: content text shown ABOVE CLI block', () => {
@@ -98,12 +96,12 @@ describe('ChatMessage CLI Output integration', () => {
     });
     const text = container.textContent ?? '';
     const answerIdx = text.indexOf('Here is the answer');
-    const cliIdx = text.indexOf('CLI Output');
+    const cliIdx = text.indexOf('已执行1次工具调用');
     expect(answerIdx).toBeGreaterThanOrEqual(0);
     expect(cliIdx).toBeGreaterThan(answerIdx);
   });
 
-  it('stream origin with only content (no tools) still renders CLI block', () => {
+  it('stream origin with only content (no tools) keeps plain stream text without tool-call header', () => {
     const msg = {
       id: 'msg-4',
       type: 'assistant' as const,
@@ -116,6 +114,7 @@ describe('ChatMessage CLI Output integration', () => {
     act(() => {
       root.render(React.createElement(ChatMessage, { message: msg, getCatById }));
     });
-    expect(container.textContent).toContain('CLI Output');
+    expect(container.textContent).toContain('some CLI output');
+    expect(container.textContent).not.toContain('已执行0次工具调用');
   });
 });

@@ -222,8 +222,8 @@ export function MessageActions({ message, threadId, children }: MessageActionsPr
 
       {/* Edit: inline textarea */}
       {dialog.type === 'edit' && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={close}>
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-base font-semibold mb-2">编辑消息</h3>
             <textarea
               value={dialog.editedContent}

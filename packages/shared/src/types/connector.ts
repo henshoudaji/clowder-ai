@@ -72,6 +72,17 @@ export interface OutboundDeliveryTarget {
   readonly metadata?: Record<string, unknown>;
 }
 
+// ── Connector-Agent Binding (channel-level multi-agent config) ──
+
+/** Per-connector multi-agent configuration. Binds available agents to a channel. */
+export interface ConnectorAgentConfig {
+  readonly connectorId: string;
+  readonly agentIds: string[];
+  readonly primaryAgentId: string;
+  readonly userId: string;
+  readonly updatedAt: number;
+}
+
 // ── Connector Registry ──
 
 const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [

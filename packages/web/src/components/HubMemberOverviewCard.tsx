@@ -21,6 +21,7 @@ function humanizeProvider(provider: string, labels?: Record<string, string>) {
 }
 
 function clientRuntimeLabel(cat: CatData, configCat?: CatConfig, labels?: Record<string, string>) {
+  if (cat.embeddedRuntimeKind === 'agentteams_acp') return 'Assistant Agent';
   if (labels?.[cat.provider]) return labels[cat.provider];
   if (cat.provider === 'relayclaw') return 'Assistant Agent';
   if (cat.provider === 'dare') return 'Office Agent';
@@ -42,6 +43,10 @@ function cleanAccountRef(raw: string): string {
 
 function accountSummary(cat: CatData) {
   const accountRef = cat.accountRef?.trim() ?? cat.providerProfileId?.trim() ?? '';
+  if (cat.embeddedRuntimeKind === 'agentteams_acp') {
+    const cleaned = accountRef ? cleanAccountRef(accountRef) : '';
+    return cleaned ? `内置 Runtime · API Key · ${cleaned}` : '内置 Runtime · 待绑定 API Key';
+  }
   if (!accountRef) return humanizeProvider(cat.provider);
   const cleaned = cleanAccountRef(accountRef);
   if (cleaned === 'claude' || cleaned === 'codex' || cleaned === 'gemini' || cleaned === 'dare' || cleaned === 'opencode') {

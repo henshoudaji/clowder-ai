@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { splitCommandArgs } from './hub-cat-editor.model';
 import { parseProviderEnvText } from './hub-provider-env';
 import type { ApiProtocol } from './hub-provider-profiles.sections';
 import type { AcpModelAccessMode, AcpModelProfileItem, ProfileItem } from './hub-provider-profiles.types';
@@ -105,10 +106,7 @@ export function HubProviderProfileItem({
       await onSave({
         displayName: editDisplayName.trim(),
         command: editCommand.trim(),
-        args: editArgs
-          .split(/\s+/)
-          .map((value) => value.trim())
-          .filter(Boolean),
+        args: splitCommandArgs(editArgs),
         cwd: editCwd.trim() || null,
         ...(parsedEnv ? { env: parsedEnv } : {}),
         modelAccessMode: editModelAccessMode,

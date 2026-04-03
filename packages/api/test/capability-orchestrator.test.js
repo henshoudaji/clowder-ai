@@ -39,6 +39,13 @@ function makeConfig(capabilities = []) {
   return { version: 1, capabilities };
 }
 
+function restoreCatRegistry(snapshot) {
+  catRegistry.reset();
+  for (const [id, config] of Object.entries(snapshot)) {
+    catRegistry.register(id, config);
+  }
+}
+
 // ────────── Read/Write capabilities.json ──────────
 
 describe('readCapabilitiesConfig', () => {
@@ -846,6 +853,38 @@ describe('generateCliConfigs', () => {
       );
     } catch {
       // File may not exist if no google cats — that's fine
+    }
+  });
+
+  it('writes .mcp.json even when no anthropic cats are registered', async () => {
+    const snapshot = catRegistry.getAllConfigs();
+    catRegistry.reset();
+    catRegistry.register('codex', CAT_CONFIGS.codex);
+    catRegistry.register('gemini', CAT_CONFIGS.gemini);
+
+    try {
+      const paths = {
+        anthropic: join(dir, '.mcp.json'),
+        openai: join(dir, '.codex', 'config.toml'),
+        google: join(dir, '.gemini', 'settings.json'),
+      };
+
+      const config = makeConfig([
+        {
+          id: 'cat-cafe-collab',
+          type: 'mcp',
+          enabled: true,
+          source: 'cat-cafe',
+          mcpServer: { command: 'node', args: ['collab.js'] },
+        },
+      ]);
+
+      await generateCliConfigs(config, paths);
+
+      const claudeData = JSON.parse(await readFile(paths.anthropic, 'utf-8'));
+      assert.deepEqual(Object.keys(claudeData.mcpServers), ['cat-cafe-collab']);
+    } finally {
+      restoreCatRegistry(snapshot);
     }
   });
 });

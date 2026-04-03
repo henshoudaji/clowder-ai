@@ -499,7 +499,14 @@ function createIcoFromPng(pngPath, icoPath) {
 }
 
 function copyTopLevelProject(bundleDir) {
-  const entries = ['cat-cafe-skills', 'LICENSE', '.env.example', 'cat-template.json', 'modelarts-preset.json', 'pnpm-workspace.yaml'];
+  const entries = [
+    'cat-cafe-skills',
+    'LICENSE',
+    '.env.example',
+    'cat-template.json',
+    'modelarts-preset.json',
+    'pnpm-workspace.yaml',
+  ];
   for (const entry of entries) {
     const source = join(repoRoot, entry);
     if (!existsSync(source)) {
@@ -530,19 +537,10 @@ async function stageWindowsPython(bundleDir, options) {
   resetDir(targetDir);
   extractZip(archivePath, targetDir);
 
-  // Enable site-packages and add vendor paths to ._pth
-  const pthFile = join(targetDir, `python${PYTHON_MAJOR_MINOR}._pth`);
-  if (existsSync(pthFile)) {
-    const pthContent = [
-      `python${PYTHON_MAJOR_MINOR}.zip`,
-      '.',
-      'Lib/site-packages',
-      '../../vendor/dare-cli',
-      '../../vendor/jiuwenclaw',
-      'import site',
-    ].join('\n');
-    writeFileSync(pthFile, pthContent, 'utf8');
-  }
+  // Keep vendor source trees off sys.path while pip bootstraps/installs.
+  // Some local checkouts contain generated *.egg-info/*.dist-info metadata that
+  // pip/importlib.metadata will eagerly parse, which breaks on Python 3.13.
+  writePythonRuntimePth(targetDir, { includeVendorPaths: false });
 
   // Bootstrap pip
   const getPipPath = join(options.cacheDir, 'get-pip.py');
@@ -553,8 +551,24 @@ async function stageWindowsPython(bundleDir, options) {
   return { version: PYTHON_EMBED_VERSION, url: PYTHON_EMBED_URL };
 }
 
+function writePythonRuntimePth(targetDir, options = {}) {
+  const pthFile = join(targetDir, `python${PYTHON_MAJOR_MINOR}._pth`);
+  if (!existsSync(pthFile)) {
+    return;
+  }
+
+  const pthLines = [`python${PYTHON_MAJOR_MINOR}.zip`, '.', 'Lib/site-packages'];
+  if (options.includeVendorPaths) {
+    pthLines.push('../../vendor/dare-cli', '../../vendor/jiuwenclaw');
+  }
+  pthLines.push('import site');
+
+  writeFileSync(pthFile, `${pthLines.join('\n')}\n`, 'utf8');
+}
+
 function installSharedPythonDeps(bundleDir) {
-  const pythonExe = join(bundleDir, 'tools', 'python', 'python.exe');
+  const pythonDir = join(bundleDir, 'tools', 'python');
+  const pythonExe = join(pythonDir, 'python.exe');
 
   // Ensure setuptools is available (needed by some packages with pyproject.toml builds)
   run(pythonExe, ['-m', 'pip', 'install', '-q', '--no-warn-script-location', 'setuptools', 'wheel']);
@@ -594,20 +608,31 @@ function installSharedPythonDeps(bundleDir) {
 
   // Prune site-packages to reduce size
   const sitePackages = join(bundleDir, 'tools', 'python', 'Lib', 'site-packages');
-  removeNamedDirectoriesRecursive(sitePackages, ['__pycache__', 'tests', 'test', '__tests__']);
+  removeNamedDirectoriesRecursive(sitePackages, ['tests', 'test', '__tests__']);
   walkFiles(sitePackages, (fullPath, entry) => {
-    if (entry.name.endsWith('.pyc') || entry.name.endsWith('.pyo')) {
+    if (entry.name.endsWith('.pyo')) {
       rmSync(fullPath, { force: true });
     }
   });
+
+  // Restore vendor source paths for runtime module launches after pip work is done.
+  writePythonRuntimePth(pythonDir, { includeVendorPaths: true });
 }
 
 function stageVendorPythonSources(bundleDir) {
   const excludeDirs = new Set([
-    'dist', '.venv', '.build-venv', '__pycache__', 'tests', 'test',
-    '.git', 'node_modules', 'build', '.mypy_cache', '.pytest_cache',
+    'dist',
+    '.venv',
+    '.build-venv',
+    'tests',
+    'test',
+    '.git',
+    'node_modules',
+    'build',
+    '.mypy_cache',
+    '.pytest_cache',
   ]);
-  const excludeFiles = new Set(['uv.lock']);
+  const excludeFiles = new Set(['uv.lock', 'PKG-INFO', 'METADATA']);
 
   function copySourceTree(srcDir, destDir) {
     ensureDir(destDir);
@@ -616,10 +641,11 @@ function stageVendorPythonSources(bundleDir) {
       const destPath = join(destDir, entry.name);
       if (entry.isDirectory()) {
         if (excludeDirs.has(entry.name)) continue;
+        if (entry.name.endsWith('.egg-info') || entry.name.endsWith('.dist-info')) continue;
         copySourceTree(srcPath, destPath);
       } else {
         if (excludeFiles.has(entry.name)) continue;
-        if (entry.name.endsWith('.pyc') || entry.name.endsWith('.pyo')) continue;
+        if (entry.name.endsWith('.pyo')) continue;
         // Use copyFileSync instead of cpSync — cpSync fails on non-ASCII filenames on Windows
         copyFileSync(srcPath, destPath);
       }
@@ -699,10 +725,7 @@ function removeNamedDirectoriesRecursive(rootDir, directoryNames) {
 
 function pruneRuntimePackage(targetDir, options = {}) {
   removePaths(targetDir, options.removePaths ?? []);
-  removeNamedDirectoriesRecursive(targetDir, [
-    'test', 'tests', '__tests__',
-    'example', 'examples', 'doc', 'docs',
-  ]);
+  removeNamedDirectoriesRecursive(targetDir, ['test', 'tests', '__tests__', 'example', 'examples', 'doc', 'docs']);
   walkFiles(targetDir, (fullPath, entry) => {
     const fileName = entry.name;
     if (fileName === 'package-lock.json' || fileName === '.package-lock.json') {
@@ -737,7 +760,11 @@ function pruneNativePrebuilds(rootDir) {
   while (stack.length > 0) {
     const current = stack.pop();
     let entries;
-    try { entries = readdirSync(current, { withFileTypes: true }); } catch { continue; }
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const fullPath = join(current, entry.name);
@@ -913,7 +940,9 @@ async function stageBundledApiRuntime(targetRootDir) {
 
     writeJson(join(targetDir, 'package.json'), createBundledApiRuntimePackageJson(join(sourceDir, 'package.json')));
   } catch (error) {
-    logStep(`API bundling unavailable, falling back to staged dist (${error instanceof Error ? error.message : String(error)})`);
+    logStep(
+      `API bundling unavailable, falling back to staged dist (${error instanceof Error ? error.message : String(error)})`,
+    );
     copyIfPresent(join(sourceDir, 'dist'), join(targetDir, 'dist'));
     writeJson(
       join(targetDir, 'package.json'),
@@ -971,7 +1000,10 @@ function stageStandaloneWebRuntime(targetRootDir) {
   rmSync(join(targetDir, 'node_modules'), { recursive: true, force: true });
   copyIfPresent(WEB_BUILD_STATIC_DIR, join(targetDir, '.next', 'static'));
   copyIfPresent(WEB_PUBLIC_DIR, join(targetDir, 'public'));
-  writeJson(join(targetDir, 'package.json'), createStandaloneWebRuntimePackageJson(join(repoRoot, 'packages', 'web', 'package.json')));
+  writeJson(
+    join(targetDir, 'package.json'),
+    createStandaloneWebRuntimePackageJson(join(repoRoot, 'packages', 'web', 'package.json')),
+  );
   writeFileSync(join(targetDir, 'server.js'), RUNTIME_WEB_STANDALONE_SERVER, 'utf8');
   pruneRuntimePackage(targetDir, {
     removePaths: [
@@ -1310,9 +1342,8 @@ function buildInstallerOutputPath(outputDir, version) {
 
 function createPayloadTar(bundleDir, tarPath) {
   rmSync(tarPath, { force: true });
-  const tarExe = process.platform === 'win32'
-    ? join(process.env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'tar.exe')
-    : 'tar';
+  const tarExe =
+    process.platform === 'win32' ? join(process.env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
   run(tarExe, ['-czf', tarPath, '-C', bundleDir, '.']);
   if (!existsSync(tarPath)) {
     throw new Error(`Failed to create payload archive: ${tarPath}`);
@@ -1349,6 +1380,14 @@ function invokeMakensis(installerScript, outputExe, payloadTar, version) {
   ]);
 }
 
+function stageWindowsDesktopAssets(bundleDir) {
+  logStep('Staging desktop assets');
+  const assetsSource = join(repoRoot, 'packaging', 'windows', 'assets');
+  if (existsSync(assetsSource)) {
+    cpSync(assetsSource, join(bundleDir, 'assets'), { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const bundleDir = join(options.outputDir, 'bundle');
@@ -1382,17 +1421,7 @@ async function main() {
     }
     logStep('Building WebView2 desktop launcher');
     buildWindowsDesktopLauncher(bundleDir, options);
-    logStep('Staging desktop assets');
-    const assetsTarget = join(bundleDir, 'assets');
-    ensureDir(assetsTarget);
-    const desktopSplashSource = join(repoRoot, 'packaging', 'windows', 'desktop', 'splash.jpg');
-    if (existsSync(desktopSplashSource)) {
-      cpSync(desktopSplashSource, join(assetsTarget, 'splash.jpg'), { force: true });
-    }
-    const appIconSource = join(repoRoot, 'packaging', 'windows', 'assets', 'app.ico');
-    if (existsSync(appIconSource)) {
-      cpSync(appIconSource, join(assetsTarget, 'app.ico'), { force: true });
-    }
+    stageWindowsDesktopAssets(bundleDir);
     logStep(`Launcher rebuilt in ${bundleDir}`);
     return;
   }
@@ -1452,17 +1481,7 @@ async function main() {
   logStep('Building WebView2 desktop launcher');
   buildWindowsDesktopLauncher(bundleDir, options);
 
-  logStep('Staging desktop assets');
-  const assetsTarget = join(bundleDir, 'assets');
-  ensureDir(assetsTarget);
-  const desktopSplashSource = join(repoRoot, 'packaging', 'windows', 'desktop', 'splash.jpg');
-  if (existsSync(desktopSplashSource)) {
-    cpSync(desktopSplashSource, join(assetsTarget, 'splash.jpg'), { force: true });
-  }
-  const appIconSource = join(repoRoot, 'packaging', 'windows', 'assets', 'app.ico');
-  if (existsSync(appIconSource)) {
-    cpSync(appIconSource, join(assetsTarget, 'app.ico'), { force: true });
-  }
+  stageWindowsDesktopAssets(bundleDir);
 
   logStep('Finalizing runtime bundle');
   ensureRuntimeSkeleton(bundleDir);
