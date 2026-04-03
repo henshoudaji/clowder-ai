@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { AgentManagementIcon } from './AgentManagementIcon';
 
 interface ConnectThirdPartyAgentModalProps {
@@ -62,14 +62,10 @@ export function ConnectThirdPartyAgentModal({ open, onClose }: ConnectThirdParty
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.24)] px-6 py-8"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.24)] px-6 py-8">
       <div
         className="flex h-[642px] w-[550px] flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
         data-testid="connect-third-party-agent-modal"
-        onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[#EEF2F6] px-6 py-5">
           <div>

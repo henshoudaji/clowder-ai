@@ -570,10 +570,9 @@ export function HubCatEditor({ cat, configCat, draft, open, onClose, onSaved }: 
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4" onClick={requestClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div
         className="flex max-h-[88vh] w-full max-w-[560px] flex-col rounded-[32px] border border-[#F0DDCD] bg-[#FFF8F2] shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between border-b border-[#F0DDCD] px-7 py-5">
           <div>

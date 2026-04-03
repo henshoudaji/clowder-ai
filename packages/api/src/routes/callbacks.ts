@@ -243,6 +243,12 @@ function normalizeFeatId(value: string): string {
   return value.trim().toUpperCase();
 }
 
+function maskCredentialForLog(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  if (value.length <= 8) return `${value[0] ?? ''}***(${value.length})`;
+  return `${value.slice(0, 6)}***(${value.length})`;
+}
+
 async function buildThreadIdsByFeatId(
   threadStore: IThreadStore | undefined,
   backlogStore: IBacklogStore | undefined,
@@ -296,6 +302,30 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
   app.post('/api/callbacks/post-message', async (request, reply) => {
     const parsed = postMessageSchema.safeParse(request.body);
     if (!parsed.success) {
+      const rawBody =
+        request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+          ? (request.body as Record<string, unknown>)
+          : undefined;
+      const rawContent = rawBody?.['content'];
+      const rawTargetCats = rawBody?.['targetCats'];
+      app.log.warn(
+        {
+          issues: parsed.error.issues,
+          bodyShape: {
+            bodyType: Array.isArray(request.body) ? 'array' : typeof request.body,
+            keys: rawBody ? Object.keys(rawBody) : undefined,
+            invocationId: maskCredentialForLog(rawBody?.['invocationId']),
+            callbackToken: maskCredentialForLog(rawBody?.['callbackToken']),
+            contentType: typeof rawContent,
+            contentLength: typeof rawContent === 'string' ? rawContent.length : undefined,
+            threadIdType: rawBody ? typeof rawBody['threadId'] : undefined,
+            replyToType: rawBody ? typeof rawBody['replyTo'] : undefined,
+            targetCatsType: Array.isArray(rawTargetCats) ? 'array' : typeof rawTargetCats,
+            targetCatsLength: Array.isArray(rawTargetCats) ? rawTargetCats.length : undefined,
+          },
+        },
+        '[callbacks/post-message] Invalid request body',
+      );
       reply.status(400);
       return { error: 'Invalid request body', details: parsed.error.issues };
     }

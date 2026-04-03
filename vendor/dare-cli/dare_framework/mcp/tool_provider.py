@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Sequence
 
 from dare_framework.mcp.kernel import IMCPClient
@@ -100,7 +101,8 @@ class McpToolManager(IToolProvider):
         if not tools:
             return None
         normalized_name = self._normalize_tool_name(mcp_name, tool_name)
-        return tools.get(normalized_name)
+        normalized_token = self._normalize_identifier(normalized_name)
+        return tools.get(tool_name) or tools.get(normalized_name) or tools.get(normalized_token)
 
     async def _refresh_mcp(self, mcp_name: str) -> None:
         client = self._clients[mcp_name]
@@ -113,7 +115,9 @@ class McpToolManager(IToolProvider):
             if not tool.name:
                 continue
             short_name = self._normalize_tool_name(mcp_name, tool.name)
+            normalized_short_name = self._normalize_identifier(short_name)
             mapping[short_name] = tool
+            mapping[normalized_short_name] = tool
             mapping[tool.name] = tool
         self._tools_by_mcp[mcp_name] = mapping
 
@@ -123,10 +127,29 @@ class McpToolManager(IToolProvider):
 
     @staticmethod
     def _normalize_tool_name(mcp_name: str, tool_name: str) -> str:
-        prefix = f"{mcp_name}:"
-        if tool_name.startswith(prefix):
-            return tool_name[len(prefix):]
+        normalized_mcp_name = McpToolManager._normalize_identifier(mcp_name)
+        # Accept legacy ":" / "_" and new "-" separator.
+        for prefix in (
+            f"{mcp_name}:",
+            f"{mcp_name}_",
+            f"{mcp_name}-",
+            f"{normalized_mcp_name}:",
+            f"{normalized_mcp_name}_",
+            f"{normalized_mcp_name}-",
+        ):
+            if tool_name.startswith(prefix):
+                return tool_name[len(prefix) :]
         return tool_name
+
+    @staticmethod
+    def _normalize_identifier(value: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9_]+", "_", value.strip().lower())
+        normalized = re.sub(r"_+", "_", normalized).strip("_")
+        if not normalized:
+            return "unknown"
+        if normalized[0].isdigit():
+            return f"mcp_{normalized}"
+        return normalized
 
 
 # Backward compatibility: existing call sites still import MCPToolProvider.

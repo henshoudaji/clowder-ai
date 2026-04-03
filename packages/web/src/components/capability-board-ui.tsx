@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { type ReactNode } from 'react';
+import { NameInitialIcon } from './NameInitialIcon';
 
 export interface CapabilityBoardItem {
   id: string;
@@ -96,25 +97,6 @@ export function ExtensionIcon({ className }: { className?: string }) {
   );
 }
 
-function getSkillInitial(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const [initial] = Array.from(trimmed);
-  return /[a-z]/i.test(initial) ? initial.toUpperCase() : initial;
-}
-
-function SkillArtwork({ name }: { name: string }) {
-  const initial = getSkillInitial(name);
-  return (
-    <div
-      aria-hidden="true"
-      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-[var(--accent-soft)] shadow-sm"
-    >
-      <span className="text-xl font-bold text-[var(--text-accent)]">{initial}</span>
-    </div>
-  );
-}
-
 function getSourceLabel(source: CapabilityBoardItem['source']): string {
   if (source === 'cat-cafe') return '官方';
   if (source === 'external') return '三方';
@@ -127,6 +109,8 @@ export function CapabilitySection({
   headerSlot,
   headerSlotClassName,
   titleActionSlot,
+  showWhenEmpty,
+  emptyState,
   items,
   catFamilies,
   toggling,
@@ -140,6 +124,8 @@ export function CapabilitySection({
   headerSlot?: ReactNode;
   headerSlotClassName?: string;
   titleActionSlot?: ReactNode;
+  showWhenEmpty?: boolean;
+  emptyState?: ReactNode;
   items: CapabilityBoardItem[];
   catFamilies: CatFamily[];
   toggling: string | null;
@@ -147,7 +133,7 @@ export function CapabilitySection({
   onUninstall?: (id: string) => void;
   hideSkillMountStatus?: boolean;
 }) {
-  if (items.length === 0) return null;
+  if (items.length === 0 && !showWhenEmpty) return null;
 
   return (
     <div className="mb-6 pt-6">
@@ -158,19 +144,23 @@ export function CapabilitySection({
         </div>
         {headerSlot ? <div className={headerSlotClassName ?? 'mt-3'}>{headerSlot}</div> : null}
       </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <CapabilityCard
-            key={`${item.type}:${item.id}`}
-            item={item}
-            catFamilies={catFamilies}
-            toggling={toggling}
-            onToggle={onToggle}
-            onUninstall={onUninstall}
-            hideSkillMountStatus={_hideSkillMountStatus}
-          />
-        ))}
-      </div>
+      {items.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <CapabilityCard
+              key={`${item.type}:${item.id}`}
+              item={item}
+              catFamilies={catFamilies}
+              toggling={toggling}
+              onToggle={onToggle}
+              onUninstall={onUninstall}
+              hideSkillMountStatus={_hideSkillMountStatus}
+            />
+          ))}
+        </div>
+      ) : (
+        emptyState ?? null
+      )}
     </div>
   );
 }
@@ -201,7 +191,7 @@ function CapabilityCard({
       data-testid={`capability-card-${item.type}-${item.id}`}
     >
       <div className="flex items-start gap-3">
-        <SkillArtwork name={item.id} />
+        <NameInitialIcon name={item.id} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
             <h3 className="truncate text-base font-semibold text-[var(--text-primary)]">{item.id}</h3>

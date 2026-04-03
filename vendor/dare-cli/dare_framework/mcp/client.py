@@ -7,6 +7,7 @@ operations (initialize, list_tools, call_tool, etc.) using JSON-RPC 2.0.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from dare_framework.mcp.kernel import IMCPClient
@@ -21,6 +22,17 @@ from dare_framework.tool.types import (
 )
 
 logger = logging.getLogger(__name__)
+MCP_TOOL_NAME_SEPARATOR = "-"
+
+
+def _normalize_identifier(value: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9_]+", "_", value.strip().lower())
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    if not normalized:
+        return "unknown"
+    if normalized[0].isdigit():
+        return f"mcp_{normalized}"
+    return normalized
 
 
 class MCPError(Exception):
@@ -168,7 +180,12 @@ class MCPClient(IMCPClient):
             tool_name = _tool_field(tool_def, "name", "")
             if not tool_name:
                 continue
-            full_name = f"{self._name}:{tool_name}"
+            # Use normalized "mcp_name-tool_name" for compatibility with providers that reject ':'.
+            full_name = (
+                f"{_normalize_identifier(self._name)}"
+                f"{MCP_TOOL_NAME_SEPARATOR}"
+                f"{_normalize_identifier(str(tool_name))}"
+            )
             tools.append(
                 _MCPRemoteTool(
                     client=self,

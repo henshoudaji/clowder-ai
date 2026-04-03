@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { AgentManagementIcon } from './AgentManagementIcon';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -12,10 +13,12 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'danger' | 'default';
-  /** When true, clicking the backdrop does not close the dialog */
-  disableBackdropClose?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+function CloseIcon() {
+  return <AgentManagementIcon name="close" className="h-4 w-4" />;
 }
 
 export function ConfirmDialog({
@@ -26,8 +29,6 @@ export function ConfirmDialog({
   inputPlaceholder,
   confirmLabel = '确认',
   cancelLabel = '取消',
-  variant = 'default',
-  disableBackdropClose = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -53,18 +54,21 @@ export function ConfirmDialog({
   if (!open) return null;
 
   const canConfirm = requireInput ? inputValue === requireInput : true;
-  const isDanger = variant === 'danger';
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-      onClick={disableBackdropClose ? undefined : onCancel}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4"
-        onClick={disableBackdropClose ? undefined : (e) => e.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold mb-2">{title}</h3>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-[8px] shadow-xl p-6 max-w-sm w-full mx-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-base font-semibold">{title}</h3>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="close"
+            className="flex h-6 w-6 items-center justify-center rounded text-[#5F6775] transition-colors hover:bg-[#F7F8FA]"
+          >
+            <CloseIcon />
+          </button>
+        </div>
         <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{message}</p>
         {requireInput && (
           <input
@@ -86,7 +90,7 @@ export function ConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={!canConfirm}
-            className={isDanger ? 'ui-button-danger' : 'ui-button-primary'}
+            className="ui-button-primary"
           >
             {confirmLabel}
           </button>

@@ -15,6 +15,7 @@ const SKILL_SEARCH_PLACEHOLDER = '输入关键字搜索、过滤';
 const SKILL_SEARCH_ARIA_LABEL = '搜索我的技能';
 const SOURCE_FILTER_ARIA_LABEL = '筛选来源';
 const IMPORT_LABEL = '导入';
+const NO_SEARCH_RESULTS_TITLE = '未找到匹配技能';
 
 function sourceToLabel(source: string): string {
   if (source === 'cat-cafe') return '官方';
@@ -114,7 +115,7 @@ export function HubCapabilityTab({
   const handleUninstall = useCallback(
     async (skillId: string) => {
       const ok = await confirm({
-        title: '卸载 Skill',
+        title: '卸载技能',
         message: `确定要卸载 “${skillId}” 吗？此操作不可恢复。`,
         confirmLabel: '卸载',
         cancelLabel: '取消',
@@ -213,6 +214,10 @@ export function HubCapabilityTab({
         title={`${activeCategory} (${displayedSkillItems.length})`}
         subtitle="已安装技能"
         headerSlotClassName="mt-0 py-6"
+        showWhenEmpty={skillItems.length > 0}
+        emptyState={
+          <h3 className="py-2 text-xs text-[var(--text-muted)]">{NO_SEARCH_RESULTS_TITLE}</h3>
+        }
         titleActionSlot={
           onImport ? (
             <button
@@ -271,8 +276,7 @@ export function HubCapabilityTab({
               <path d="m21 21-4.35-4.35" />
             </svg>
           </div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">没有找到匹配的能力</h3>
-          <p className="mt-1 max-w-[220px] text-xs text-[var(--text-muted)]">请检查 Skills 配置，或切换分类后重试。</p>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">暂无数据</h3>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -190,6 +190,30 @@ describe('DareAgentService', () => {
     assert.ok(!args.includes('--auto-approve'), `--auto-approve should be replaced by --full-auto: ${args}`);
     assert.ok(!args.includes('--auto-approve-tool'), `--auto-approve-tool no longer needed with --full-auto: ${args}`);
     assert.ok(args.includes('-m') && args.includes('client'), `expected -m client in args: ${args}`);
+  });
+
+  test('defaults DARE_SSL_VERIFY to 0 in child env', async () => {
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const service = new DareAgentService({ catId: 'dare', spawnFn, model: 'test/model' });
+    const promise = collect(service.invoke('Test prompt'));
+    emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+    await promise;
+
+    const opts = spawnFn.mock.calls[0].arguments[2];
+    assert.strictEqual(opts.env.DARE_SSL_VERIFY, '0');
+  });
+
+  test('maps acpModelProfile.sslVerify=true to DARE_SSL_VERIFY=1', async () => {
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const service = new DareAgentService({ catId: 'dare', spawnFn, model: 'test/model' });
+    const promise = collect(service.invoke('Test prompt', { acpModelProfile: { sslVerify: true } }));
+    emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+    await promise;
+
+    const opts = spawnFn.mock.calls[0].arguments[2];
+    assert.strictEqual(opts.env.DARE_SSL_VERIFY, '1');
   });
 
   test('omits --adapter and --model when no explicit override is provided', async () => {
@@ -623,8 +647,8 @@ describe('DareAgentService', () => {
     assert.ok(!args.includes('--system-prompt-mode'), `should not have --system-prompt-mode: ${args}`);
   });
 
-  // MCP path: passed via --mcp-path when callbackEnv is present
-  test('mcpServerPath is forwarded via --mcp-path when callbackEnv is present', async () => {
+  // MCP path: JS entry is bridged to Dare JSON config when callbackEnv is present
+  test('mcpServerPath JS entry is bridged via --mcp-path when callbackEnv is present', async () => {
     const proc = createMockProcess();
     const spawnFn = mock.fn(() => proc);
     const service = new DareAgentService({
@@ -640,7 +664,13 @@ describe('DareAgentService', () => {
     const args = spawnFn.mock.calls[0].arguments[1];
     const mcpIdx = args.indexOf('--mcp-path');
     assert.ok(mcpIdx >= 0, `expected --mcp-path in args: ${args}`);
-    assert.strictEqual(args[mcpIdx + 1], '/opt/mcp/dist/index.js');
+    const bridgePath = args[mcpIdx + 1];
+    assert.notStrictEqual(bridgePath, '/opt/mcp/dist/index.js');
+    const bridgeConfig = JSON.parse(readFileSync(bridgePath, 'utf8'));
+    assert.strictEqual(bridgeConfig.name, 'cat_cafe');
+    assert.strictEqual(bridgeConfig.transport, 'stdio');
+    assert.deepEqual(bridgeConfig.command, [process.execPath, '/opt/mcp/dist/index.js']);
+    assert.strictEqual(bridgeConfig.cwd, '/opt/mcp/dist');
   });
 
   test('no --mcp-path when callbackEnv is absent', async () => {
@@ -921,8 +951,8 @@ describe('DareAgentService', () => {
     assert.strictEqual(opts.env.DARE_CONTEXT_WINDOW_TOKENS, undefined);
   });
 
-  // preferCompactMcpEntry: swaps index.js → dare.js when dare.js exists
-  test('preferCompactMcpEntry: uses dare.js when configured path is index.js', async () => {
+  // preferCompactMcpEntry + bridging: index.js → dare.js when dare.js exists
+  test('preferCompactMcpEntry: uses dare.js inside generated bridge config', async () => {
     const tmpMcp = join(tmpdir(), `dare-mcp-compact-${Date.now()}-${Math.random().toString(16).slice(2)}`);
     mkdirSync(tmpMcp, { recursive: true });
     writeFileSync(join(tmpMcp, 'index.js'), '');
@@ -943,10 +973,13 @@ describe('DareAgentService', () => {
     const args = spawnFn.mock.calls[0].arguments[1];
     const mcpIdx = args.indexOf('--mcp-path');
     assert.ok(mcpIdx >= 0, `expected --mcp-path in args: ${args}`);
-    assert.strictEqual(args[mcpIdx + 1], join(tmpMcp, 'dare.js'));
+    const bridgeConfig = JSON.parse(readFileSync(args[mcpIdx + 1], 'utf8'));
+    assert.strictEqual(bridgeConfig.name, 'cat_cafe');
+    assert.deepEqual(bridgeConfig.command, [process.execPath, join(tmpMcp, 'dare.js')]);
+    assert.strictEqual(bridgeConfig.cwd, tmpMcp);
   });
 
-  test('preferCompactMcpEntry: keeps index.js when dare.js does not exist', async () => {
+  test('preferCompactMcpEntry: keeps index.js inside generated bridge config when dare.js does not exist', async () => {
     const tmpMcp = join(tmpdir(), `dare-mcp-no-compact-${Date.now()}-${Math.random().toString(16).slice(2)}`);
     mkdirSync(tmpMcp, { recursive: true });
     writeFileSync(join(tmpMcp, 'index.js'), '');
@@ -967,10 +1000,13 @@ describe('DareAgentService', () => {
     const args = spawnFn.mock.calls[0].arguments[1];
     const mcpIdx = args.indexOf('--mcp-path');
     assert.ok(mcpIdx >= 0, `expected --mcp-path in args: ${args}`);
-    assert.strictEqual(args[mcpIdx + 1], join(tmpMcp, 'index.js'));
+    const bridgeConfig = JSON.parse(readFileSync(args[mcpIdx + 1], 'utf8'));
+    assert.strictEqual(bridgeConfig.name, 'cat_cafe');
+    assert.deepEqual(bridgeConfig.command, [process.execPath, join(tmpMcp, 'index.js')]);
+    assert.strictEqual(bridgeConfig.cwd, tmpMcp);
   });
 
-  test('preferCompactMcpEntry: does not change non-index.js paths', async () => {
+  test('preferCompactMcpEntry: keeps custom JS entry inside generated bridge config', async () => {
     const proc = createMockProcess();
     const spawnFn = mock.fn(() => proc);
     const service = new DareAgentService({
@@ -986,7 +1022,98 @@ describe('DareAgentService', () => {
     const args = spawnFn.mock.calls[0].arguments[1];
     const mcpIdx = args.indexOf('--mcp-path');
     assert.ok(mcpIdx >= 0, `expected --mcp-path in args: ${args}`);
-    assert.strictEqual(args[mcpIdx + 1], '/opt/mcp/dist/custom-entry.js');
+    const bridgeConfig = JSON.parse(readFileSync(args[mcpIdx + 1], 'utf8'));
+    assert.strictEqual(bridgeConfig.name, 'cat_cafe');
+    assert.deepEqual(bridgeConfig.command, [process.execPath, '/opt/mcp/dist/custom-entry.js']);
+    assert.strictEqual(bridgeConfig.cwd, '/opt/mcp/dist');
+  });
+
+  test('bridges Claude-style .mcp.json to Dare servers config', async () => {
+    const tempRoot = join(tmpdir(), `dare-mcp-claude-bridge-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    mkdirSync(tempRoot, { recursive: true });
+    const mcpFile = join(tempRoot, '.mcp.json');
+    writeFileSync(
+      mcpFile,
+      JSON.stringify(
+        {
+          mcpServers: {
+            'cat-cafe': { command: 'node', args: ['/repo/packages/mcp-server/dist/index.js'] },
+            'http-tool': { type: 'http', url: 'https://example.com/mcp', headers: { Authorization: 'Bearer token' } },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const service = new DareAgentService({
+      catId: 'dare',
+      spawnFn,
+      model: 'test/model',
+      mcpServerPath: mcpFile,
+    });
+    const promise = collect(service.invoke('Test', { callbackEnv: { CAT_CAFE_API_URL: 'http://localhost:3004' } }));
+    emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+    await promise;
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const mcpIdx = args.indexOf('--mcp-path');
+    assert.ok(mcpIdx >= 0, `expected --mcp-path in args: ${args}`);
+    const bridgePath = args[mcpIdx + 1];
+    assert.notStrictEqual(bridgePath, mcpFile);
+
+    const bridgeConfig = JSON.parse(readFileSync(bridgePath, 'utf8'));
+    assert.ok(Array.isArray(bridgeConfig.servers), 'expected multi-server Dare config');
+    const catCafe = bridgeConfig.servers.find((item) => item.name === 'cat_cafe');
+    assert.ok(catCafe, 'expected cat_cafe server in bridge config');
+    assert.deepEqual(catCafe.command, ['node', '/repo/packages/mcp-server/dist/index.js']);
+    assert.strictEqual(catCafe.cwd, '/repo/packages/mcp-server/dist');
+    const httpTool = bridgeConfig.servers.find((item) => item.name === 'http_tool');
+    assert.ok(httpTool, 'expected http_tool server in bridge config');
+    assert.strictEqual(httpTool.transport, 'http');
+    assert.strictEqual(httpTool.url, 'https://example.com/mcp');
+  });
+
+  test('normalizes and deduplicates Claude-style MCP server names', async () => {
+    const tempRoot = join(tmpdir(), `dare-mcp-name-normalize-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    mkdirSync(tempRoot, { recursive: true });
+    const mcpFile = join(tempRoot, '.mcp.json');
+    writeFileSync(
+      mcpFile,
+      JSON.stringify(
+        {
+          mcpServers: {
+            'cat-cafe': { command: 'node', args: ['/repo/packages/mcp-server/dist/index.js'] },
+            cat_cafe: { command: 'node', args: ['/repo/packages/mcp-server/dist/secondary.js'] },
+            '123 weird@name': { command: 'node', args: ['/repo/packages/mcp-server/dist/third.js'] },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const service = new DareAgentService({
+      catId: 'dare',
+      spawnFn,
+      model: 'test/model',
+      mcpServerPath: mcpFile,
+    });
+    const promise = collect(service.invoke('Test', { callbackEnv: { CAT_CAFE_API_URL: 'http://localhost:3004' } }));
+    emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+    await promise;
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const mcpIdx = args.indexOf('--mcp-path');
+    assert.ok(mcpIdx >= 0, `expected --mcp-path in args: ${args}`);
+    const bridgePath = args[mcpIdx + 1];
+    const bridgeConfig = JSON.parse(readFileSync(bridgePath, 'utf8'));
+    const names = bridgeConfig.servers.map((item) => item.name).sort();
+    assert.deepEqual(names, ['cat_cafe', 'cat_cafe_2', 'mcp_123_weird_name']);
   });
 
   test('injects bundled Python Scripts into dare child PATH', async () => {

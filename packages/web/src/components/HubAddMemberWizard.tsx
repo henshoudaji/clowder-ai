@@ -269,10 +269,9 @@ export function HubAddMemberWizard({ open, onClose, onComplete }: HubAddMemberWi
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div
         className="flex max-h-[88vh] w-full max-w-[520px] flex-col rounded-[32px] border border-[#F0DDCD] bg-[#FFF8F2] shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between px-7 pb-2 pt-7">
           <p className="text-[13px] font-semibold text-[#D18A61]">成员协作 &gt; 总览 &gt; 添加成员</p>

@@ -4,6 +4,8 @@ import asyncio
 from types import SimpleNamespace
 
 from dare_framework.model.adapters import openai_adapter as openai_adapter_module
+from dare_framework.config.types import LLMConfig
+from dare_framework.model import default_model_adapter_manager as default_model_adapter_manager_module
 from dare_framework.model.adapters.openai_adapter import OpenAIModelAdapter, _join_stream_text_parts
 
 
@@ -42,6 +44,22 @@ def test_build_client_enables_streaming_for_custom_endpoint(monkeypatch) -> None
     assert DummyChatOpenAI.last_kwargs is not None
     assert DummyChatOpenAI.last_kwargs["streaming"] is True
     assert DummyChatOpenAI.last_kwargs["base_url"] == "https://endpoint.example/v1"
+
+
+def test_dare_ssl_verify_defaults_to_false(monkeypatch) -> None:
+    monkeypatch.delenv("DARE_SSL_VERIFY", raising=False)
+
+    options = default_model_adapter_manager_module._http_client_options_from_proxy(LLMConfig())
+
+    assert options["verify"] is False
+
+
+def test_dare_ssl_verify_env_can_reenable_validation(monkeypatch) -> None:
+    monkeypatch.setenv("DARE_SSL_VERIFY", "1")
+
+    options = default_model_adapter_manager_module._http_client_options_from_proxy(LLMConfig())
+
+    assert options["verify"] is True
 
 
 def test_join_stream_text_parts_preserves_continuous_reasoning_text() -> None:

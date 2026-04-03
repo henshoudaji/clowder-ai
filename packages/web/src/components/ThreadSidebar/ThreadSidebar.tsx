@@ -27,6 +27,21 @@ interface ThreadSidebarProps {
   activeMenu?: 'models' | 'agents' | 'channels' | 'skills';
 }
 
+const CONNECTOR_SOURCE_LABELS: Record<string, string> = {
+  feishu: '飞书',
+  telegram: 'Telegram',
+  wechat: '微信',
+  slack: 'Slack',
+  discord: 'Discord',
+  dingtalk: '钉钉',
+};
+
+function getThreadSourceLabel(thread: Thread): string | undefined {
+  const connectorId = thread.connectorHubState?.connectorId;
+  if (!connectorId) return undefined;
+  return CONNECTOR_SOURCE_LABELS[connectorId] ?? connectorId;
+}
+
 export function ThreadSidebar({
   onClose,
   className,
@@ -54,7 +69,9 @@ export function ThreadSidebar({
   const [showPicker, setShowPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [showFilter, setShowFilter] = useState(false);
+  const [filterOption, setFilterOption] = useState<'all' | '1m' | '3m' | '6m'>('all');
+  const [pendingFilterOption, setPendingFilterOption] = useState<'all' | '1m' | '3m' | '6m'>('all');
   const [bindWarning, setBindWarning] = useState<string | null>(null);
   // I-1: Thread to confirm deletion (null = no dialog)
   const [deleteTarget, setDeleteTarget] = useState<Thread | null>(null);
@@ -64,6 +81,8 @@ export function ThreadSidebar({
   const [isLoadingTrash, setIsLoadingTrash] = useState(false);
   // F070: governance health by project path
   const [govHealth, setGovHealth] = useState<Record<string, string>>({});
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+  const filterToggleRef = useRef<HTMLButtonElement>(null);
 
   // Shared seq maps 鈥?created once, cross-referenced between pin/fav toggle instances
   const pinSeqMap = useRef(new Map<string, number>());
@@ -121,6 +140,19 @@ export function ThreadSidebar({
     void loadThreads();
   }, [loadThreads]);
 
+  useEffect(() => {
+    if (!showFilter) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (filterPanelRef.current?.contains(target)) return;
+      if (filterToggleRef.current?.contains(target)) return;
+      setShowFilter(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [showFilter]);
+
   // F070: Fetch governance health for all registered external projects
   useEffect(() => {
     (async () => {
@@ -145,6 +177,19 @@ export function ThreadSidebar({
     },
     [router],
   );
+
+  const handleNewChat = useCallback(() => {
+    if (onNewChatClick) {
+      onNewChatClick();
+      return;
+    }
+    setCurrentThread('default');
+    setCurrentProject('default');
+    navigateToThread('default');
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      onClose?.();
+    }
+  }, [onNewChatClick, onClose, setCurrentProject, setCurrentThread, navigateToThread]);
 
   const createInProject = useCallback(
     async (opts: NewThreadOptions) => {
@@ -351,20 +396,31 @@ export function ThreadSidebar({
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredThreads = useMemo(() => {
-    if (!normalizedQuery) return threads;
-    return threads.filter((thread) => {
-      const title = (thread.title ?? '').toLowerCase();
-      const fallback = (thread.id === 'default' ? '大厅' : '未命名对话').toLowerCase();
-      const project = (thread.projectPath ?? '').toLowerCase();
-      const threadId = thread.id.toLowerCase();
-      return (
-        title.includes(normalizedQuery) ||
-        fallback.includes(normalizedQuery) ||
-        project.includes(normalizedQuery) ||
-        threadId.includes(normalizedQuery)
-      );
-    });
-  }, [threads, normalizedQuery]);
+    let result = threads;
+    if (normalizedQuery) {
+      result = result.filter((thread) => {
+        const title = (thread.title ?? '').toLowerCase();
+        const fallback = (thread.id === 'default' ? '大厅' : '未命名对话').toLowerCase();
+        const project = (thread.projectPath ?? '').toLowerCase();
+        const threadId = thread.id.toLowerCase();
+        return (
+          title.includes(normalizedQuery) ||
+          fallback.includes(normalizedQuery) ||
+          project.includes(normalizedQuery) ||
+          threadId.includes(normalizedQuery)
+        );
+      });
+    }
+
+    if (filterOption !== 'all') {
+      const now = Date.now();
+      const days = filterOption === '1m' ? 30 : filterOption === '3m' ? 90 : 180;
+      const threshold = now - days * 24 * 60 * 60 * 1000;
+      result = result.filter((thread) => thread.lastActiveAt >= threshold);
+    }
+
+    return result;
+  }, [threads, normalizedQuery, filterOption]);
 
   const unreadIds = useMemo(() => {
     const ids = new Set<string>();
@@ -407,19 +463,14 @@ export function ThreadSidebar({
     groups.push({ type: 'recent' as const, label: '全部', threads: sortedUnpinned });
     return groups;
   }, [filteredThreads]);
-  const displayThreadGroups = useMemo(() => {
-    if (sortOrder === 'desc') return threadGroups;
-    return threadGroups.map((group) => ({
-      ...group,
-      threads: [...group.threads].sort((a, b) => a.lastActiveAt - b.lastActiveAt),
-      archivedGroups: group.archivedGroups?.map((sub) => ({
-        ...sub,
-        threads: [...sub.threads].sort((a, b) => a.lastActiveAt - b.lastActiveAt),
-      })),
-    }));
-  }, [threadGroups, sortOrder]);
+  const displayThreadGroups = useMemo(() => threadGroups, [threadGroups]);
   const existingProjects = useMemo(() => getProjectPaths(threads), [threads]);
   const showDefaultThread = normalizedQuery.length === 0 || '大厅'.includes(normalizedQuery);
+  const hasVisibleThreads = useMemo(
+    () => displayThreadGroups.some((group) => (group.threads?.length ?? 0) > 0),
+    [displayThreadGroups],
+  );
+  const showNoResults = !hasVisibleThreads && !showDefaultThread && (normalizedQuery.length > 0 || filterOption !== 'all');
 
   // F095: Collapse state with localStorage persistence + search/active auto-expand
   const { isCollapsed, toggleGroup } = useCollapseState({
@@ -477,18 +528,7 @@ export function ThreadSidebar({
           <div className="flex flex-col gap-1.5 items-start">
             <button
               type="button"
-              onClick={() => {
-                if (onNewChatClick) {
-                  onNewChatClick();
-                } else {
-                  setCurrentThread('default');
-                  setCurrentProject('default');
-                  navigateToThread('default');
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
-                    onClose?.();
-                  }
-                }
-              }}
+              onClick={handleNewChat}
               className={`${menuItemBase} ${isChatMenu ? menuItemActive : menuItemInactive} text-cafe-black`}
             >
               <img src="/icons/menu/new-chat.svg" alt="" aria-hidden="true" className="w-4 h-4 shrink-0" />
@@ -535,16 +575,17 @@ export function ThreadSidebar({
           </div>
         )}
 
-        <div className="px-4 pt-2 pb-1">
+        <div className="relative px-4 pt-2 pb-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-[var(--text-secondary)]">会话消息</span>
             <div className="flex items-center gap-1">
               <button
+                ref={filterToggleRef}
                 type="button"
-                onClick={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
-                className={`rounded p-1 transition-colors ${sortOrder === 'asc' ? 'bg-[var(--accent-soft)] text-[var(--text-accent)]' : 'text-[var(--text-muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--text-accent)]'}`}
-                title={sortOrder === 'desc' ? '按时间升序' : '按时间降序'}
-                data-testid="thread-sort-toggle"
+                onClick={() => {setShowFilter((prev) => !prev); setIsSearchOpen(false);}}
+                className={`rounded p-1 transition-colors ${showFilter || filterOption !== 'all' ? 'text-[rgba(20,115,255,1)]' : 'text-[var(--text-muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--text-accent)]'}`}
+                title="筛选会话"
+                data-testid="thread-filter-toggle"
               >
                 <svg className="h-4 w-4 align-middle" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
                   <path d="M582.4 529.92c0-18.8416 6.4512-37.1712 18.2272-51.9168l182.3744-227.9936a19.2 19.2 0 0 0 4.1984-11.9808V204.8A19.2 19.2 0 0 0 768 185.6H256A19.2 19.2 0 0 0 236.8 204.8v33.28c0 4.3008 1.4848 8.5504 4.1984 11.9296L423.424 478.0032c11.776 14.7456 18.2272 33.0752 18.2272 51.968v257.5872c0 7.2704 4.096 13.9264 10.5984 17.152l130.2016 65.1264V529.92zM256 121.6512h512c45.9264 0 83.2 37.2736 83.2 83.2v33.28c0 18.8416-6.4512 37.1712-18.2272 51.9168l-182.3744 227.9936a19.2 19.2 0 0 0-4.1984 11.9808v350.208a57.6 57.6 0 0 1-83.3536 51.5072l-139.4688-69.7344a83.2 83.2 0 0 1-45.9776-74.3936v-257.5872a19.2 19.2 0 0 0-4.1984-11.9808L190.976 289.9968a83.2 83.2 0 0 1-18.2272-51.968V204.8c0-45.9264 37.2736-83.2 83.2-83.2z" />
@@ -552,7 +593,7 @@ export function ThreadSidebar({
               </button>
               <button
                 type="button"
-                onClick={() => setIsSearchOpen((prev) => !prev)}
+                onClick={() =>{ setIsSearchOpen((prev) => !prev); setShowFilter(false) }}
                 className={`rounded p-1 transition-colors ${isSearchOpen || normalizedQuery.length > 0 ? 'bg-[var(--accent-soft)] text-[var(--text-accent)]' : 'text-[var(--text-muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--text-accent)]'}`}
                 title="搜索会话"
                 data-testid="thread-search-toggle"
@@ -565,14 +606,77 @@ export function ThreadSidebar({
             </div>
           </div>
           {(isSearchOpen || normalizedQuery.length > 0) && (
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索对话、项目或 ID..."
-              autoComplete="off"
-              className="ui-field w-full px-2.5 py-1.5 text-[13px] placeholder:text-[var(--text-muted)]"
-            />
+            <div className="relative mt-2">
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索对话"
+                autoComplete="off"
+                className="ui-field h-8 w-full pr-8 pl-2.5 py-1.5 text-[13px] placeholder:text-[var(--text-muted)]"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {setSearchQuery(''); setShowFilter(false);}}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full text-[20px] leading-5 text-[#808080] hover:text-[#191919]"
+                  aria-label="清除搜索"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           )}
+
+          {showFilter && (
+            <div
+              ref={filterPanelRef}
+              className="absolute right-4 top-[44px] z-40 w-[200px] rounded-[6px] bg-white p-4 shadow-[0_2px_12px_0_rgba(0,0,0,0.16)]"
+            >
+              <div className="text-[12px] font-[400] leading-[18px] text-[#808080]">会话时间</div>
+              <div className="mt-3 flex flex-col">
+                {[
+                  { key: 'all', label: '全部' },
+                  { key: '1m', label: '近1个月' },
+                  { key: '3m', label: '近3个月' },
+                  { key: '6m', label: '近6个月' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`text-[12px] font-[400] leading-[18px] text-[#191919] text-left py-[2px] ${pendingFilterOption === item.key ? 'text-[rgba(20,115,255,1)]' : ''}`}
+                    style={{ marginBottom: '14px' }}
+                    onClick={() => setPendingFilterOption(item.key as 'all' | '1m' | '3m' | '6m')}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="pt-4 flex justify-end gap-2 border-t border-[#E5E7EB]">
+                <button
+                  type="button"
+                  className="h-6 rounded-full border border-[rgba(89,89,89,1)] px-4 text-[12px] font-[400] text-[#191919]"
+                  onClick={() => {
+                    setPendingFilterOption('all');
+                    setFilterOption('all');
+                    setShowFilter(false);
+                  }}
+                >
+                  重置
+                </button>
+                <button
+                  type="button"
+                  className="h-6 rounded-full border border-[rgba(89,89,89,1)] px-4 text-[12px] font-[400] text-[#191919]"
+                  onClick={() => {
+                    setFilterOption(pendingFilterOption);
+                    setShowFilter(false);
+                  }}
+                >
+                  确定
+                </button>
+              </div>
+            </div>
+          )}
+
           {unreadIds.size > 0 && (
             <button
               type="button"
@@ -603,14 +707,27 @@ export function ThreadSidebar({
             />
           )}
 
-          {displayThreadGroups.map((group) => {
-            const groupKey = group.projectPath ?? group.type;
-            const icon =
-              group.type === 'favorites'
-                ? ('star' as const)
-                : group.type === 'archived-container'
-                  ? ('archive' as const)
-                  : undefined;
+          {showNoResults ? (
+            <div className="flex h-full min-h-[120px] flex-col items-center justify-center px-3 py-4 text-center text-xs text-gray-400">
+              <div className="text-[14px] font-[400] text-[#333]">没有结果</div>
+              <div className="flex text-[12px] font-[400]  text-[#333] mt-1 gap-2">请开启 <button
+                type="button"
+                onClick={handleNewChat}
+                className="text-[12px] font-[400] text-[rgba(20,115,255,1)]"
+              >
+                新的会话
+              </button>
+              </div>
+            </div>
+          ) : (
+            displayThreadGroups.map((group) => {
+              const groupKey = group.projectPath ?? group.type;
+              const icon =
+                group.type === 'favorites'
+                  ? ('star' as const)
+                  : group.type === 'archived-container'
+                    ? ('archive' as const)
+                    : undefined;
 
             // Archived container: render nested project groups
             if (group.type === 'archived-container') {
@@ -657,6 +774,7 @@ export function ThreadSidebar({
                             indented
                             preferredCats={t.preferredCats}
                             isHubThread={!!t.connectorHubState}
+                            sourceLabel={getThreadSourceLabel(t)}
                           />
                         ))}
                       </SectionGroup>
@@ -705,15 +823,14 @@ export function ThreadSidebar({
                     indented={group.type === 'project'}
                     preferredCats={t.preferredCats}
                     isHubThread={!!t.connectorHubState}
+                    sourceLabel={getThreadSourceLabel(t)}
                   />
                 ))}
               </SectionGroup>
             );
-          })}
-
-          {normalizedQuery.length > 0 && threadGroups.length === 0 && !showDefaultThread && (
-            <div className="px-3 py-4 text-xs text-gray-400">没有匹配的对话</div>
+          })
           )}
+
         </div>
 
         {/* 回收站入口暂时隐藏 */}
@@ -737,15 +854,18 @@ export function ThreadSidebar({
       {deleteTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
-          onClick={() => setDeleteTarget(null)}
         >
           <div
-            className="w-[500px] rounded-2xl border border-[#E5EAF0] bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="w-[400px] rounded-2xl border border-[#E5EAF0] bg-white p-6 shadow-2xl"
           >
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-[16px] font-bold text-gray-900">确认删除对话</h3>
+                <div className="flex items-center gap-2">
+                  <svg className="h-6 w-6 text-[#FAAD14]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12.866 3.5a1 1 0 0 0-1.732 0l-8.25 14.5A1 1 0 0 0 3.75 19.5h16.5a1 1 0 0 0 .866-1.5l-8.25-14.5ZM12 8a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0V9a1 1 0 0 1 1-1Zm0 9a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 17Z" />
+                  </svg>
+                  <h3 className="text-[16px] font-bold text-gray-900">确认删除对话</h3>
+                </div>
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(null)}
@@ -758,9 +878,7 @@ export function ThreadSidebar({
                 </button>
               </div>
 
-              <div className="space-y-1">
-                <p className="text-sm text-gray-600">即将删除「{deleteTarget.title ?? '未命名对话'}」</p>
-              </div>
+              <p className="text-sm text-gray-600">删除后，该会话及聊天记录将全部清空且不可恢复</p>
 
               <div className="flex items-center justify-end gap-2">
                 <button

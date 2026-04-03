@@ -64,6 +64,50 @@ test('item.completed file_change → tool_use', () => {
   assert.equal(msg?.toolName, 'file_change');
 });
 
+test('item.completed file_change with pptx artifact → tool_use + rich_block attachment', () => {
+  const msg = transformCodexEvent(
+    {
+      type: 'item.completed',
+      item: {
+        type: 'file_change',
+        status: 'completed',
+        changes: [{ path: 'output/reports/q1-summary.pptx' }],
+      },
+    },
+    CAT,
+    undefined,
+    {
+      workingDirectory: '/repo/project',
+      worktreeId: 'wt-123',
+    },
+  );
+
+  assert.ok(Array.isArray(msg), 'pptx artifact should emit both tool event and rich block');
+  assert.equal(msg[0]?.type, 'tool_use');
+  assert.equal(msg[0]?.toolName, 'file_change');
+  assert.deepEqual(msg[0]?.toolInput, {
+    status: 'completed',
+    changes: 1,
+    paths: ['output/reports/q1-summary.pptx'],
+  });
+
+  assert.equal(msg[1]?.type, 'system_info');
+  const payload = JSON.parse(msg[1]?.content ?? '{}');
+  assert.equal(payload.type, 'rich_block');
+  assert.equal(payload.block.kind, 'file');
+  assert.equal(payload.block.fileName, 'q1-summary.pptx');
+  assert.equal(
+    payload.block.url,
+    '/api/workspace/download?worktreeId=wt-123&path=output%2Freports%2Fq1-summary.pptx',
+  );
+  assert.equal(payload.block.worktreeId, 'wt-123');
+  assert.equal(payload.block.workspacePath, 'output/reports/q1-summary.pptx');
+  assert.equal(
+    payload.block.mimeType,
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  );
+});
+
 test('Reconnecting error → system_info', () => {
   const msg = transformCodexEvent({ type: 'error', message: 'Reconnecting... (attempt 1)' }, CAT);
   assert.equal(msg?.type, 'system_info');

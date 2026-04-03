@@ -84,6 +84,7 @@ export {
   sessionChainTools,
   sessionSearchInputSchema,
 } from './session-chain-tools.js';
+export { scheduleTools } from './schedule-tools.js';
 export { signalStudyTools } from './signal-study-tools.js';
 export {
   handleSignalGetArticle,

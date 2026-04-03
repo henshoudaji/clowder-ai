@@ -505,8 +505,8 @@ function buildModelartsBreed(template, breedId, options) {
         defaultModel: options.defaultModel ?? options._sharedDefaultModel ?? 'glm-5',
         mcpSupport: true,
         cli: defaultCliForProvider(options.provider),
-        accountRef: 'modelarts-shared',
-        providerProfileId: 'modelarts-shared',
+        accountRef: 'huawei-maas',
+        providerProfileId: 'huawei-maas',
       },
     ],
   };

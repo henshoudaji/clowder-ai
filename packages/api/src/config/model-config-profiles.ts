@@ -7,6 +7,8 @@ export interface ModelConfigBinding {
   id: string;
   models: string[];
   displayName?: string;
+  description?: string;
+  icon?: string;
   baseUrl?: string;
   apiKey?: string;
   headers?: Record<string, string>;
@@ -18,10 +20,22 @@ export const MODEL_CONFIG_FALLBACK_ENV = 'CAT_CAFE_MODEL_CONFIG_FALLBACK_ENABLED
 export interface CreateProjectModelConfigSourceInput {
   id: string;
   displayName?: string;
+  description?: string;
+  icon?: string;
   baseUrl: string;
   apiKey: string;
   headers?: Record<string, string>;
   models: string[];
+}
+
+export interface UpdateProjectModelConfigSourceInput {
+  displayName?: string | null;
+  description?: string | null;
+  icon?: string | null;
+  baseUrl?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  models?: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,12 +91,16 @@ function normalizeOpenAiBinding(id: string, value: Record<string, unknown>): Mod
   if (!baseUrl || !apiKey || models.length === 0) return null;
 
   const displayName = typeof value.displayName === 'string' ? value.displayName.trim() : '';
+  const description = typeof value.description === 'string' ? value.description.trim() : '';
+  const icon = typeof value.icon === 'string' ? value.icon.trim() : '';
   const headers = normalizeHeaderMap(value.headers);
   return {
     id,
     models,
     protocol: 'openai',
     ...(displayName ? { displayName } : {}),
+    ...(description ? { description } : {}),
+    ...(icon ? { icon } : {}),
     baseUrl,
     apiKey,
     ...(headers ? { headers } : {}),
@@ -179,12 +197,16 @@ export async function createProjectModelConfigSource(
   }
 
   const displayName = input.displayName?.trim();
+  const description = input.description?.trim();
+  const icon = input.icon?.trim();
   const headers = normalizeHeaderMap(input.headers);
   const nextDocument: Record<string, unknown> = {
     ...existingDocument,
     [trimmedId]: {
       protocol: 'openai',
       ...(displayName ? { displayName } : {}),
+      ...(description ? { description } : {}),
+      ...(icon ? { icon } : {}),
       baseUrl,
       apiKey,
       ...(headers ? { headers } : {}),
@@ -200,6 +222,8 @@ export async function createProjectModelConfigSource(
     id: trimmedId,
     protocol: 'openai',
     ...(displayName ? { displayName } : {}),
+    ...(description ? { description } : {}),
+    ...(icon ? { icon } : {}),
     baseUrl,
     apiKey,
     ...(headers ? { headers } : {}),
@@ -238,6 +262,90 @@ export async function deleteProjectModelConfigSource(projectRoot: string, source
   return true;
 }
 
+export async function updateProjectModelConfigSource(
+  projectRoot: string,
+  sourceId: string,
+  input: UpdateProjectModelConfigSourceInput,
+): Promise<ModelConfigBinding> {
+  const trimmedId = sourceId.trim();
+  if (!trimmedId) {
+    throw new Error('model config source id is required');
+  }
+  if (trimmedId === HUAWEI_MAAS_MODEL_SOURCE_ID) {
+    throw new Error(`model config source "${HUAWEI_MAAS_MODEL_SOURCE_ID}" cannot be updated`);
+  }
+
+  const existingDocument = await readProjectModelConfigDocument(projectRoot);
+  if (!existingDocument || existingDocument[trimmedId] === undefined) {
+    throw new Error(`model config source "${trimmedId}" not found`);
+  }
+
+  const existingValue = existingDocument[trimmedId];
+  if (!isRecord(existingValue)) {
+    throw new Error(`model config source "${trimmedId}" has invalid format`);
+  }
+
+  const existing = normalizeOpenAiBinding(trimmedId, existingValue);
+  if (!existing) {
+    throw new Error(`model config source "${trimmedId}" is not an editable openai source`);
+  }
+
+  // Handle displayName: null/empty string means "clear" -> fall back to id
+  const displayName =
+    input.displayName !== undefined
+      ? input.displayName?.trim() || trimmedId // null/empty -> use id as fallback
+      : existing.displayName;
+  // Handle description/icon: null/empty string means "clear" -> undefined
+  const description =
+    input.description !== undefined
+      ? input.description?.trim() || undefined
+      : (existingValue.description as string | undefined);
+  const icon = input.icon !== undefined ? input.icon?.trim() || undefined : (existingValue.icon as string | undefined);
+  const baseUrl = input.baseUrl !== undefined ? input.baseUrl.trim() : existing.baseUrl;
+  const apiKey = input.apiKey !== undefined ? input.apiKey.trim() : existing.apiKey;
+  const headers =
+    input.headers !== undefined ? normalizeHeaderMap(input.headers) : normalizeHeaderMap(existingValue.headers);
+  const models =
+    input.models !== undefined
+      ? Array.from(new Set(input.models.map((model) => model.trim()).filter(Boolean)))
+      : existing.models;
+
+  if (!baseUrl || !apiKey) {
+    throw new Error('baseUrl and apiKey are required');
+  }
+  if (models.length === 0) {
+    throw new Error('at least one model is required');
+  }
+
+  const updatedRecord: Record<string, unknown> = {
+    protocol: 'openai',
+    ...(displayName ? { displayName } : {}),
+    ...(description ? { description } : {}),
+    ...(icon ? { icon } : {}),
+    baseUrl,
+    apiKey,
+    ...(headers ? { headers } : {}),
+    models: models.map((model) => ({ id: model })),
+  };
+
+  existingDocument[trimmedId] = updatedRecord;
+  const filePath = resolveProjectModelConfigPath(projectRoot);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(existingDocument, null, 2)}\n`, 'utf-8');
+
+  return {
+    id: trimmedId,
+    protocol: 'openai',
+    ...(displayName ? { displayName } : {}),
+    ...(description ? { description } : {}),
+    ...(icon ? { icon } : {}),
+    baseUrl,
+    apiKey,
+    ...(headers ? { headers } : {}),
+    models,
+  } satisfies ModelConfigBinding;
+}
+
 export async function readProjectModelConfigProfileViews(projectRoot: string): Promise<ProviderProfileView[] | null> {
   const bindings = await readProjectModelConfigBindings(projectRoot);
   if (!bindings) return null;
@@ -255,14 +363,16 @@ export async function readProjectModelConfigProfileViews(projectRoot: string): P
     provider: binding.id,
     displayName: displayNameForBinding(binding),
     name: displayNameForBinding(binding),
+    description: binding.description,
+    icon: binding.icon,
     authType: binding.protocol === 'huawei_maas' ? 'none' : 'api_key',
-    kind: 'api_key',
+    kind: 'api_key' as const,
     builtin: false,
-    mode: binding.protocol === 'huawei_maas' ? 'none' : 'api_key',
+    mode: binding.protocol === 'huawei_maas' ? ('none' as const) : ('api_key' as const),
     ...(binding.protocol ? { protocol: binding.protocol } : {}),
     models: binding.models,
     hasApiKey: binding.protocol !== 'huawei_maas',
     createdAt: timestamp,
     updatedAt: timestamp,
-  }));
+  })) as ProviderProfileView[];
 }

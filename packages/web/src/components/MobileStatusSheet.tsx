@@ -49,7 +49,6 @@ export function MobileStatusSheet({
         className={`fixed inset-0 bg-black/30 z-40 transition-opacity lg:hidden ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
-        onClick={onClose}
         aria-hidden="true"
       />
 

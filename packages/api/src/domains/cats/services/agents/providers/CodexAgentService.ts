@@ -39,6 +39,7 @@ import {
   createCodexSessionContextSnapshotResolver,
 } from '../providers/codex-session-context-snapshot.js';
 import { extractImagePaths } from '../providers/image-paths.js';
+import { resolveWorktreeIdByPath } from '../../../../workspace/workspace-security.js';
 
 const log = createModuleLogger('codex-agent');
 
@@ -312,6 +313,7 @@ export class CodexAgentService implements AgentService {
     const metadata: MessageMetadata = { provider: 'openai', model: effectiveModel };
     const auditContext = options?.auditContext;
     const recentStreamErrors: string[] = [];
+    let workspaceWorktreeId: string | undefined;
 
     try {
       // HOME isolation: only for API Key mode.
@@ -370,6 +372,14 @@ export class CodexAgentService implements AgentService {
       const events = options?.spawnCliOverride
         ? options.spawnCliOverride(cliOpts)
         : spawnCli(cliOpts, this.spawnFn ? { spawnFn: this.spawnFn } : undefined);
+
+      if (options?.workingDirectory) {
+        try {
+          workspaceWorktreeId = await resolveWorktreeIdByPath(options.workingDirectory);
+        } catch {
+          workspaceWorktreeId = undefined;
+        }
+      }
 
       // Track substantive output (item.completed with text/tool results).
       // Used to suppress Codex CLI 0.98+ false exit-code-1 errors:
@@ -513,7 +523,10 @@ export class CodexAgentService implements AgentService {
           }
         }
 
-        const result = transformCodexEvent(event, this.catId, codexStreamState);
+        const result = transformCodexEvent(event, this.catId, codexStreamState, {
+          workingDirectory: options?.workingDirectory,
+          worktreeId: workspaceWorktreeId,
+        });
         if (result !== null) {
           if (Array.isArray(result)) {
             for (const msg of result) {

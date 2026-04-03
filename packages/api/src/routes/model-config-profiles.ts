@@ -5,6 +5,7 @@ import {
   deleteProjectModelConfigSource,
   isModelConfigProviderFallbackEnabled,
   readProjectModelConfigProfileViews,
+  updateProjectModelConfigSource,
 } from '../config/model-config-profiles.js';
 import { resolveActiveProjectRoot } from '../utils/active-project-root.js';
 import {
@@ -17,10 +18,23 @@ const createModelConfigSourceBodySchema = z.object({
   projectPath: z.string().optional(),
   sourceId: z.string().trim().min(1),
   displayName: z.string().trim().min(1).optional(),
+  description: z.string().trim().max(500).optional(),
+  icon: z.string().trim().optional(),
   baseUrl: z.string().trim().min(1),
   apiKey: z.string().trim().min(1),
   headers: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
   models: z.array(z.string().trim().min(1)).min(1),
+});
+
+const updateModelConfigSourceBodySchema = z.object({
+  projectPath: z.string().optional(),
+  displayName: z.string().trim().nullable().optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+  icon: z.string().trim().nullable().optional(),
+  baseUrl: z.string().trim().optional(),
+  apiKey: z.string().trim().optional(),
+  headers: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
+  models: z.array(z.string().trim().min(1)).optional(),
 });
 
 export const modelConfigProfilesRoutes: FastifyPluginAsync<ProviderProfilesRoutesOptions> = async (app) => {
@@ -63,6 +77,8 @@ export const modelConfigProfilesRoutes: FastifyPluginAsync<ProviderProfilesRoute
       const created = await createProjectModelConfigSource(projectRoot, {
         id: parsed.data.sourceId,
         ...(parsed.data.displayName ? { displayName: parsed.data.displayName } : {}),
+        ...(parsed.data.description ? { description: parsed.data.description } : {}),
+        ...(parsed.data.icon ? { icon: parsed.data.icon } : {}),
         baseUrl: parsed.data.baseUrl,
         apiKey: parsed.data.apiKey,
         ...(parsed.data.headers ? { headers: parsed.data.headers } : {}),
@@ -76,6 +92,8 @@ export const modelConfigProfilesRoutes: FastifyPluginAsync<ProviderProfilesRoute
           provider: created.id,
           displayName: created.displayName?.trim() || created.id,
           name: created.displayName?.trim() || created.id,
+          description: created.description,
+          icon: created.icon,
           authType: 'api_key',
           kind: 'api_key',
           builtin: false,
@@ -120,6 +138,72 @@ export const modelConfigProfilesRoutes: FastifyPluginAsync<ProviderProfilesRoute
         return { error: `model config source "${params.data.sourceId}" not found` };
       }
       return { success: true };
+    } catch (error) {
+      reply.status(400);
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  app.put('/api/model-config-profiles/:sourceId', async (request, reply) => {
+    const params = z.object({ sourceId: z.string().trim().min(1) }).safeParse(request.params);
+    if (!params.success) {
+      reply.status(400);
+      return { error: 'Invalid params', details: params.error.issues };
+    }
+
+    const parsed = updateModelConfigSourceBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      return { error: 'Invalid body', details: parsed.error.issues };
+    }
+
+    const projectRoot = await resolveProjectRoot(parsed.data.projectPath);
+    if (!projectRoot) {
+      reply.status(400);
+      return { error: 'Invalid project path: must be an existing directory under allowed roots' };
+    }
+
+    try {
+      const updateInput: {
+        displayName?: string | null;
+        description?: string | null;
+        icon?: string | null;
+        baseUrl?: string;
+        apiKey?: string;
+        headers?: Record<string, string>;
+        models?: string[];
+      } = {};
+
+      if (parsed.data.displayName !== undefined) updateInput.displayName = parsed.data.displayName;
+      if (parsed.data.description !== undefined) updateInput.description = parsed.data.description;
+      if (parsed.data.icon !== undefined) updateInput.icon = parsed.data.icon;
+      if (parsed.data.baseUrl !== undefined) updateInput.baseUrl = parsed.data.baseUrl;
+      if (parsed.data.apiKey !== undefined && parsed.data.apiKey.length > 0) {
+        updateInput.apiKey = parsed.data.apiKey;
+      }
+      if (parsed.data.headers !== undefined) updateInput.headers = parsed.data.headers;
+      if (parsed.data.models !== undefined) updateInput.models = parsed.data.models;
+
+      const updated = await updateProjectModelConfigSource(projectRoot, params.data.sourceId, updateInput);
+
+      return {
+        provider: {
+          id: updated.id,
+          provider: updated.id,
+          displayName: updated.displayName?.trim() || updated.id,
+          name: updated.displayName?.trim() || updated.id,
+          description: updated.description,
+          icon: updated.icon,
+          authType: 'api_key',
+          kind: 'api_key',
+          builtin: false,
+          mode: 'api_key',
+          protocol: 'openai',
+          models: updated.models,
+          hasApiKey: true,
+          source: 'model_config' as const,
+        },
+      };
     } catch (error) {
       reply.status(400);
       return { error: error instanceof Error ? error.message : String(error) };

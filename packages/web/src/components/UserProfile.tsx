@@ -171,7 +171,7 @@ export function UserProfile({ className }: UserProfileProps) {
         </div>
 
         <svg
-          className={`h-4 w-4 text-gray-400 transition-transform ${showPanel ? 'rotate-90' : ''}`}
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${showPanel ? 'rotate-90' : ''}`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -189,11 +189,13 @@ export function UserProfile({ className }: UserProfileProps) {
           <div className="p-5" data-testid="user-profile-panel-scroll" ref={panelScrollRef}>
             <div className="mb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cocreator-primary">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cocreator-primary">
                   <span className="text-base font-bold text-white">{avatarLetter}</span>
                 </div>
-                <div>
-                  <div className="text-base font-semibold text-gray-900">{userName}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-base font-semibold text-gray-900" title={userName}>
+                    {userName}
+                  </div>
                   <div className="text-xs text-gray-500">已登录</div>
                 </div>
               </div>

@@ -3,8 +3,6 @@ import type { ReactNode } from 'react';
 // ── Per-platform visual config (matches .pen wireframe Screen C) ──
 
 export interface PlatformVisual {
-  iconBg: string;
-  iconColor: string;
   icon: ReactNode;
 }
 
@@ -17,57 +15,40 @@ const SVG_PROPS = {
 
 export const PLATFORM_VISUALS: Record<string, PlatformVisual> = {
   feishu: {
-    iconBg: '#DBEAFE',
-    iconColor: '#2563EB',
     icon: (
-      <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" stroke="currentColor" {...SVG_PROPS}>
-        <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-      </svg>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/images/connectors/feishu.svg" alt="Feishu" className="h-11 w-11" />
     ),
   },
   telegram: {
-    iconBg: '#E0F2FE',
-    iconColor: '#0284C7',
     icon: (
-      <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" stroke="currentColor" {...SVG_PROPS}>
-        <path d="m22 2-7 20-4-9-9-4Z" />
-        <path d="M22 2 11 13" />
-      </svg>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/images/connectors/telegram.png" alt="Telegram" className="h-11 w-11" />
     ),
   },
   weixin: {
-    iconBg: '#D1FAE5',
-    iconColor: '#07C160',
     icon: (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/images/connectors/weixin.png" alt="WeChat" className="w-[18px] h-[18px]" />
+      <img src="/images/connectors/weixin.svg" alt="WeChat" className="h-11 w-11" />
     ),
   },
   dingtalk: {
-    iconBg: '#DBEAFE',
-    iconColor: '#3296FA',
     icon: (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/images/connectors/dingtalk.png" alt="DingTalk" className="w-[18px] h-[18px]" />
+      <img src="/images/connectors/dingtalk.svg" alt="DingTalk" className="h-11 w-11" />
     ),
   },
   xiaoyi: {
-    iconBg: '#FEE8EB',
-    iconColor: '#CF0A2C',
     icon: (
-      <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" stroke="currentColor" {...SVG_PROPS}>
-        <rect width="10" height="16" x="7" y="4" rx="2" />
-        <path d="M12 18h.01" />
-      </svg>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/images/connectors/xiaoyi.svg" alt="Huawei XiaoYi" className="h-11 w-11" />
     ),
   },
 };
 
 export const DEFAULT_VISUAL: PlatformVisual = {
-  iconBg: '#F3F4F6',
-  iconColor: '#6B7280',
   icon: (
-    <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" stroke="currentColor" {...SVG_PROPS}>
+    <svg className="h-11 w-11" viewBox="0 0 24 24" stroke="currentColor" {...SVG_PROPS}>
       <path d="M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0" />
     </svg>
   ),

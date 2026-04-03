@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from abc import ABC
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -43,6 +44,7 @@ class OpenAIModelAdapter(IModelAdapter):
 
 
     _logger = logging.getLogger(__name__)
+    _diag_env = "DARE_MODEL_ADAPTER_DIAG_LOG"
 
     def __init__(
         self,
@@ -82,11 +84,42 @@ class OpenAIModelAdapter(IModelAdapter):
         options: GenerateOptions | None = None,
     ) -> ModelResponse:
         """Generate a response from the OpenAI-compatible model."""
+        self._emit_diag(
+            "generate.start",
+            {
+                "adapter": self._name,
+                "model": self.model,
+                "endpoint": self._endpoint,
+                "message_count": len(model_input.messages),
+                "tool_count": len(model_input.tools or []),
+                "tool_names": [str(getattr(tool, "name", "")) for tool in (model_input.tools or [])][:50],
+                "options": _summarize_options(options),
+            },
+        )
         if self._endpoint:
+            start = time.perf_counter()
             try:
-                return await self._generate_openai_compatible_response(model_input, options)
-            except Exception:
-                pass
+                response = await self._generate_openai_compatible_response(model_input, options)
+                self._emit_diag(
+                    "generate.end",
+                    {
+                        "adapter": self._name,
+                        "path": "openai_sdk_stream",
+                        "latency_ms": round((time.perf_counter() - start) * 1000.0, 2),
+                        **_summarize_model_response(response),
+                    },
+                )
+                return response
+            except Exception as exc:
+                self._emit_diag(
+                    "generate.fallback",
+                    {
+                        "adapter": self._name,
+                        "path": "openai_sdk_stream",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
 
         client = self._ensure_client()
         client = self._apply_options(client, options)
@@ -108,21 +141,50 @@ class OpenAIModelAdapter(IModelAdapter):
         self._log_client_config(client)
         messages = self._to_langchain_messages(model_input.messages)
 
+        stream_start = time.perf_counter()
         try:
-            return await self._generate_streaming_response(client, messages)
-        except Exception:
+            response = await self._generate_streaming_response(client, messages)
+            self._emit_diag(
+                "generate.end",
+                {
+                    "adapter": self._name,
+                    "path": "langchain_stream",
+                    "latency_ms": round((time.perf_counter() - stream_start) * 1000.0, 2),
+                    **_summarize_model_response(response),
+                },
+            )
+            return response
+        except Exception as stream_exc:
+            self._emit_diag(
+                "generate.fallback",
+                {
+                    "adapter": self._name,
+                    "path": "langchain_stream",
+                    "error_type": type(stream_exc).__name__,
+                    "error": str(stream_exc),
+                },
+            )
             response = await client.ainvoke(messages)
 
             tool_calls = self._extract_tool_calls(response)
             usage = self._extract_usage(response)
             thinking_content = self._extract_thinking_content(response)
 
-            return ModelResponse(
+            model_response = ModelResponse(
                 content=_coerce_text(response.content) or "",
                 tool_calls=tool_calls,
                 usage=usage,
                 thinking_content=thinking_content,
             )
+            self._emit_diag(
+                "generate.end",
+                {
+                    "adapter": self._name,
+                    "path": "langchain_ainvoke",
+                    **_summarize_model_response(model_response),
+                },
+            )
+            return model_response
 
     def _ensure_client(self) -> Any:
         """Ensure the LangChain client is initialized."""
@@ -309,18 +371,9 @@ class OpenAIModelAdapter(IModelAdapter):
                 if delta is None:
                     continue
 
-                # Preserve raw str content (including newlines) — _coerce_text
-                # strips whitespace per-chunk which destroys structural line
-                # breaks.  For non-str payloads (list/dict content blocks)
-                # fall back to _coerce_text so we don't lose structured data.
-                raw_content = getattr(delta, "content", None)
-                if isinstance(raw_content, str):
-                    if raw_content:
-                        content_parts.append(raw_content)
-                else:
-                    coerced = _coerce_text(raw_content)
-                    if coerced:
-                        content_parts.append(coerced)
+                content_text = _coerce_text(getattr(delta, "content", None))
+                if content_text:
+                    content_parts.append(content_text)
 
                 thinking_text = _extract_delta_thinking_text(delta)
                 if thinking_text:
@@ -329,7 +382,7 @@ class OpenAIModelAdapter(IModelAdapter):
                 _accumulate_openai_sdk_tool_calls(tool_call_chunks, getattr(delta, "tool_calls", None))
 
         return ModelResponse(
-            content="".join(content_parts).strip(),
+            content="".join(content_parts),
             tool_calls=_finalize_langchain_tool_calls(tool_call_chunks),
             usage=usage,
             thinking_content=_join_stream_text_parts(thinking_parts),
@@ -344,18 +397,9 @@ class OpenAIModelAdapter(IModelAdapter):
         async for chunk in client.astream(messages):
             usage = _merge_usage(usage, _extract_chunk_usage(chunk))
 
-            # Preserve raw str content (including newlines) — _coerce_text
-            # strips whitespace per-chunk which destroys structural line
-            # breaks.  For non-str payloads (list/dict content blocks)
-            # fall back to _coerce_text so we don't lose structured data.
-            raw_content = getattr(chunk, "content", None)
-            if isinstance(raw_content, str):
-                if raw_content:
-                    content_parts.append(raw_content)
-            else:
-                coerced = _coerce_text(raw_content)
-                if coerced:
-                    content_parts.append(coerced)
+            content_text = _coerce_text(getattr(chunk, "content", None))
+            if content_text:
+                content_parts.append(content_text)
 
             thinking_text = self._extract_thinking_content(chunk) or _extract_reasoning_from_content_blocks(chunk)
             if thinking_text:
@@ -364,7 +408,7 @@ class OpenAIModelAdapter(IModelAdapter):
             _accumulate_langchain_tool_call_chunks(tool_call_chunks, getattr(chunk, "tool_call_chunks", None))
 
         return ModelResponse(
-            content="".join(content_parts).strip(),
+            content="".join(content_parts),
             tool_calls=_finalize_langchain_tool_calls(tool_call_chunks),
             usage=usage,
             thinking_content=_join_stream_text_parts(thinking_parts),
@@ -509,6 +553,16 @@ class OpenAIModelAdapter(IModelAdapter):
         except Exception:
             return None, None
 
+    def _emit_diag(self, event: str, payload: dict[str, Any]) -> None:
+        raw = os.getenv(self._diag_env, "0").strip().lower()
+        if raw in {"0", "false", "off"}:
+            return
+        try:
+            self._logger.debug("[model-adapter] %s", json.dumps({"event": event, **payload}, ensure_ascii=False))
+        except Exception:
+            # Diagnostics must never break model generation.
+            pass
+
 
 
 __all__ = ["OpenAIModelAdapter"]
@@ -551,6 +605,42 @@ def _coerce_text(value: Any) -> str | None:
         if parts:
             return "\n".join(parts)
     return None
+
+
+def _summarize_options(options: GenerateOptions | None) -> dict[str, Any] | None:
+    if options is None:
+        return None
+    return {
+        "max_tokens": options.max_tokens,
+        "temperature": options.temperature,
+        "top_p": options.top_p,
+        "stop_count": len(options.stop or []),
+    }
+
+
+def _summarize_tool_call(call: dict[str, Any]) -> dict[str, Any]:
+    arguments = call.get("arguments")
+    arg_keys: list[str] = []
+    arg_type = type(arguments).__name__
+    if isinstance(arguments, dict):
+        arg_keys = sorted(str(k) for k in arguments.keys())[:20]
+    return {
+        "id": call.get("id"),
+        "name": call.get("name"),
+        "arg_type": arg_type,
+        "arg_keys": arg_keys,
+    }
+
+
+def _summarize_model_response(response: ModelResponse) -> dict[str, Any]:
+    tool_calls = response.tool_calls or []
+    return {
+        "content_len": len(response.content or ""),
+        "tool_call_count": len(tool_calls),
+        "tool_calls": [_summarize_tool_call(call) for call in tool_calls[:20] if isinstance(call, dict)],
+        "usage": response.usage or {},
+        "has_thinking": bool((response.thinking_content or "").strip()),
+    }
 
 
 def _extract_delta_thinking_text(delta: Any) -> str | None:

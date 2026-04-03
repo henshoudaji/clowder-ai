@@ -5,13 +5,18 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CliEvent } from '@/stores/chat-types';
+import { apiFetch } from '@/utils/api-client';
 
 // Stub MarkdownContent (heavy dep)
 vi.mock('@/components/MarkdownContent', () => ({
   MarkdownContent: ({ content }: { content: string }) => React.createElement('div', { 'data-testid': 'md' }, content),
 }));
+vi.mock('@/utils/api-client', () => ({
+  apiFetch: vi.fn(async () => ({ ok: true })),
+}));
 
 const { CliOutputBlock } = await import('../cli-output/CliOutputBlock');
+const mockApiFetch = vi.mocked(apiFetch);
 
 let container: HTMLDivElement;
 let root: Root;
@@ -28,6 +33,22 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  mockApiFetch.mockClear();
+  mockApiFetch.mockImplementation(async (path) => {
+    if (path === '/api/projects/cwd') {
+      return {
+        ok: true,
+        json: async () => ({ path: 'C:\\Users\\kagol\\.jiuwenclaw\\agent' }),
+      } as Response;
+    }
+    if (path === '/api/workspace/local-file-meta') {
+      return {
+        ok: true,
+        json: async () => ({ generatedAt: Date.parse('2026-03-24T08:00:00.000Z') }),
+      } as Response;
+    }
+    return { ok: true, json: async () => ({}) } as Response;
+  });
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -128,6 +149,30 @@ describe('CliOutputBlock', () => {
     });
     const wrapper = container.querySelector('#wrapper');
     expect(wrapper?.children.length).toBe(0);
+  });
+
+  it('can transition from empty events to populated events without hook-order errors', () => {
+    act(() => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: [],
+          status: 'done',
+        }),
+      );
+    });
+
+    expect(container.textContent).toBe('');
+
+    act(() => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: doneEvents,
+          status: 'done',
+        }),
+      );
+    });
+
+    expect(container.textContent).toContain('已执行1次工具调用');
   });
 
   it('has dark terminal substrate class', () => {
@@ -372,5 +417,211 @@ describe('CliOutputBlock', () => {
       );
     });
     expect(container.textContent).toContain('private');
+  });
+
+  it('does not render a ppt card when no ppt file was generated', () => {
+    act(() => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: doneEvents,
+          status: 'done',
+        }),
+      );
+    });
+
+    expect(container.querySelector('[data-testid="cli-output-ppt-card"]')).toBeNull();
+  });
+
+  it('renders a ppt attachment card from the generated local file path and opens that file', async () => {
+    const pptEvents: CliEvent[] = [
+      { id: 't1', kind: 'tool_use', timestamp: 1000, label: 'Bash python build_ppt.py' },
+      {
+        id: 't2',
+        kind: 'tool_result',
+        timestamp: 1001,
+        label: 'Bash python build_ppt.py',
+        detail: '[Done] Saved: C:\\Users\\kagol\\.jiuwenclaw\\agent\\output\\demo-deck.pptx',
+      },
+      {
+        id: 't3',
+        kind: 'text',
+        timestamp: 1002,
+        content: 'PPT generated at C:\\Users\\kagol\\.jiuwenclaw\\agent\\output\\demo-deck.pptx',
+      },
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: pptEvents,
+          status: 'done',
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('demo-deck.pptx');
+    expect(container.textContent).toContain('生成时间：2026年3月24日');
+    const openButton = container.querySelector('[data-testid="cli-output-ppt-open"]') as HTMLButtonElement | null;
+    expect(openButton).toBeTruthy();
+
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/workspace/open-local', expect.objectContaining({ method: 'POST' }));
+    const openLocalCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/open-local');
+    const [, init] = openLocalCall ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      path: 'C:\\Users\\kagol\\.jiuwenclaw\\agent\\output\\demo-deck.pptx',
+    });
+  });
+
+  it('joins relative ppt path with the configured project path before open-local', async () => {
+    const pptEvents: CliEvent[] = [
+      {
+        id: 't1',
+        kind: 'tool_result',
+        timestamp: 1001,
+        label: 'Bash python build_ppt.py',
+        detail: '[Done] Saved: output\\demo-deck.pptx',
+      },
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: pptEvents,
+          status: 'done',
+          projectPath: 'D:\\workspace\\thread-a',
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    const metaCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/local-file-meta');
+    expect(JSON.parse(String(metaCall?.[1]?.body))).toEqual({
+      path: 'D:\\workspace\\thread-a\\output\\demo-deck.pptx',
+      projectPath: 'D:\\workspace\\thread-a',
+    });
+
+    const openButton = container.querySelector('[data-testid="cli-output-ppt-open"]') as HTMLButtonElement | null;
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const openLocalCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/open-local');
+    expect(JSON.parse(String(openLocalCall?.[1]?.body))).toEqual({
+      path: 'D:\\workspace\\thread-a\\output\\demo-deck.pptx',
+      projectPath: 'D:\\workspace\\thread-a',
+    });
+  });
+
+  it('does not truncate relative output paths to a slash-prefixed suffix before open-local', async () => {
+    const pptEvents: CliEvent[] = [
+      {
+        id: 't1',
+        kind: 'tool_result',
+        timestamp: 1001,
+        label: 'Bash python build_ppt.py',
+        detail: 'output/20260402_192423_000/pages.pptx',
+      },
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: pptEvents,
+          status: 'done',
+          projectPath: 'D:\\opentiny\\ppts',
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    const metaCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/local-file-meta');
+    expect(JSON.parse(String(metaCall?.[1]?.body))).toEqual({
+      path: 'D:\\opentiny\\ppts\\output\\20260402_192423_000\\pages.pptx',
+      projectPath: 'D:\\opentiny\\ppts',
+    });
+
+    const openButton = container.querySelector('[data-testid="cli-output-ppt-open"]') as HTMLButtonElement | null;
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const openLocalCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/open-local');
+    expect(JSON.parse(String(openLocalCall?.[1]?.body))).toEqual({
+      path: 'D:\\opentiny\\ppts\\output\\20260402_192423_000\\pages.pptx',
+      projectPath: 'D:\\opentiny\\ppts',
+    });
+  });
+
+  it('joins relative ppt path with the default cwd when projectPath is default', async () => {
+    const pptEvents: CliEvent[] = [
+      {
+        id: 't1',
+        kind: 'tool_result',
+        timestamp: 1001,
+        label: 'Bash python build_ppt.py',
+        detail: '[Done] Saved: output/demo-deck.pptx',
+      },
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: pptEvents,
+          status: 'done',
+          projectPath: 'default',
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/projects/cwd');
+
+    const metaCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/local-file-meta');
+    expect(JSON.parse(String(metaCall?.[1]?.body))).toEqual({
+      path: 'C:\\Users\\kagol\\.jiuwenclaw\\agent\\output\\demo-deck.pptx',
+      projectPath: 'default',
+    });
+
+    const openButton = container.querySelector('[data-testid="cli-output-ppt-open"]') as HTMLButtonElement | null;
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const openLocalCall = mockApiFetch.mock.calls.find(([path]) => path === '/api/workspace/open-local');
+    expect(JSON.parse(String(openLocalCall?.[1]?.body))).toEqual({
+      path: 'C:\\Users\\kagol\\.jiuwenclaw\\agent\\output\\demo-deck.pptx',
+      projectPath: 'default',
+    });
+  });
+
+  it.skip('does not render a ppt card when no ppt file was generated', async () => {
+    act(() => {
+      root.render(
+        React.createElement(CliOutputBlock, {
+          events: doneEvents,
+          status: 'done',
+        }),
+      );
+    });
+
+    expect(container.textContent).toContain('NVIDIA_GTC_2026_华为风.pptx');
+    const openButton = container.querySelector('[data-testid="cli-output-ppt-open"]') as HTMLButtonElement | null;
+    expect(openButton?.textContent).toContain('打开');
+
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/workspace/open-local', expect.objectContaining({ method: 'POST' }));
+    const [, init] = mockApiFetch.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      path: 'C:\\Users\\kagol\\.jiuwenclaw\\agent\\NVIDIA_GTC_2026_华为风.pptx',
+    });
   });
 });

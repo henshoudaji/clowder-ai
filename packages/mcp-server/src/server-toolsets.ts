@@ -7,6 +7,7 @@ import {
   limbTools,
   reflectTools,
   richBlockRulesTools,
+  scheduleTools,
   sessionChainTools,
   signalStudyTools,
   signalsTools,
@@ -19,7 +20,12 @@ type ToolDef = {
   handler: (args: never) => Promise<unknown>;
 };
 
-const collabTools: readonly ToolDef[] = [...callbackTools, ...richBlockRulesTools, ...gameActionTools];
+const collabTools: readonly ToolDef[] = [
+  ...callbackTools,
+  ...richBlockRulesTools,
+  ...gameActionTools,
+  ...scheduleTools,
+];
 
 const memoryTools: readonly ToolDef[] = [
   ...callbackMemoryTools,
@@ -98,6 +104,11 @@ const COMPACT_DESCRIPTIONS: Record<string, string> = {
   cat_cafe_bootcamp_env_check: 'Run environment check for bootcamp.',
   cat_cafe_get_rich_block_rules: 'Get full rich block schema rules. Call once per session before creating blocks.',
   cat_cafe_submit_game_action: 'Submit a game action (kill/guard/divine/vote/speak/last_words).',
+  cat_cafe_list_scheduled_tasks: 'List all registered scheduled tasks (builtin + dynamic) with status.',
+  cat_cafe_list_schedule_templates: 'List available schedule task templates (reminder, web-digest, repo-activity).',
+  cat_cafe_preview_scheduled_task: 'Preview a scheduled task draft before creating it.',
+  cat_cafe_register_scheduled_task: 'Create a new scheduled task from a template. Preview first.',
+  cat_cafe_remove_scheduled_task: 'Remove a dynamic scheduled task by ID.',
   // Memory
   cat_cafe_retain_memory_callback: 'Retain a durable memory item with optional tags.',
   cat_cafe_search_evidence: 'Search project knowledge base. Modes: lexical/semantic/hybrid.',

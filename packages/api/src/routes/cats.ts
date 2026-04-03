@@ -405,6 +405,16 @@ async function toCatResponse(
   };
 }
 
+function resolveMemberLabel(existingId: string, existingConfig: CatConfig): string {
+  const displayName = existingConfig.displayName?.trim();
+  if (displayName) return displayName;
+  const name = existingConfig.name?.trim();
+  if (name) return name;
+  const nickname = existingConfig.nickname?.trim();
+  if (nickname) return nickname;
+  return existingId;
+}
+
 async function reconcileCatRegistry(
   projectRoot: string,
   managedIdsBefore: ReadonlySet<string>,
@@ -491,7 +501,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
         for (const [existingId, existingConfig] of Object.entries(allConfigs)) {
           if (existingConfig.mentionPatterns.some((p: string) => p.toLowerCase() === normalized)) {
             reply.status(400);
-            return { error: `别名 "${pattern}" 已被成员 "${existingId}" 使用` };
+            return { error: `别名 "${pattern}" 已被成员 "${resolveMemberLabel(existingId, existingConfig)}" 使用` };
           }
         }
       }
@@ -612,7 +622,7 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
           if (existingId === request.params.id) continue; // skip self
           if (existingConfig.mentionPatterns.some((p: string) => p.toLowerCase() === normalized)) {
             reply.status(400);
-            return { error: `别名 "${pattern}" 已被成员 "${existingId}" 使用` };
+            return { error: `别名 "${pattern}" 已被成员 "${resolveMemberLabel(existingId, existingConfig)}" 使用` };
           }
         }
       }

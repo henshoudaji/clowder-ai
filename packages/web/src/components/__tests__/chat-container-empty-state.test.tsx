@@ -27,6 +27,7 @@ type MockStoreState = {
   showVoteModal: boolean;
   setShowVoteModal: ReturnType<typeof vi.fn>;
   addMessage: ReturnType<typeof vi.fn>;
+  consumePendingNewThreadSend: ReturnType<typeof vi.fn>;
 };
 
 const createMockStoreState = (): MockStoreState => ({
@@ -53,6 +54,7 @@ const createMockStoreState = (): MockStoreState => ({
   showVoteModal: false,
   setShowVoteModal: vi.fn(),
   addMessage: vi.fn(),
+  consumePendingNewThreadSend: vi.fn(() => null),
 });
 
 let mockState = createMockStoreState();

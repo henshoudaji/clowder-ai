@@ -80,10 +80,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 to-white pr-[10%]">
-      <div className="flex w-full items-center">
-        <div className="flex-1 flex flex-col justify-center items-center">
-          <div className="w-full flex flex-col justify-center items-center">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white px-4 py-8 sm:px-6 md:px-8 lg:px-12 lg:py-10 xl:px-16">
+      <div className="mx-auto flex w-full max-w-[1280px] flex-row items-center gap-4 sm:gap-6 md:gap-8 min-h-[calc(100vh-4rem)] lg:min-h-[calc(100vh-5rem)] lg:gap-12">
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
+          <div className="flex w-full max-w-[760px] flex-col items-center">
             <h1
               className="text-4xl font-bold leading-[48px] mb-4 text-center"
               style={{
@@ -96,12 +96,12 @@ export default function LoginPage() {
             >
               OfficeClaw
             </h1>
-            <p className="text-2xl leading-[48px] text-gray-600 max-w-xl mb-12 font-semibold text-center">
+            <p className="mb-10 max-w-xl text-center text-xl font-semibold leading-10 text-gray-600 sm:text-2xl sm:leading-[48px]">
               即可部署专属AI 享 7x24 小时 稳定在线的超级助手
             </p>
 
-            <div className="flex gap-8">
-              <div className="max-w-[150px]">
+            <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="w-full min-w-0">
                 <div className="mb-3">
                   <Image src="/images/login1.svg" alt="AI PPT" width={32} height={32} />
                 </div>
@@ -109,7 +109,7 @@ export default function LoginPage() {
                 <p className="text-sm text-gray-600 leading-relaxed">行业专业级 AI 生成能力，一键完成高质量 PPT。</p>
               </div>
 
-              <div className="max-w-[150px]">
+              <div className="w-full min-w-0">
                 <div className="mb-3">
                   <Image src="/images/login2.svg" alt="专家团思辨模式" width={32} height={32} />
                 </div>
@@ -119,7 +119,7 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <div className="max-w-[150px]">
+              <div className="w-full min-w-0">
                 <div className="mb-3">
                   <Image src="/images/login3.svg" alt="一键本地部署" width={32} height={32} />
                 </div>
@@ -127,7 +127,7 @@ export default function LoginPage() {
                 <p className="text-sm text-gray-600 leading-relaxed">具备本地文件读写能力，无缝处理多格式文件。</p>
               </div>
 
-              <div className="max-w-[150px]">
+              <div className="w-full min-w-0">
                 <div className="mb-3">
                   <Image src="/images/login4.svg" alt="多渠道接入" width={32} height={32} />
                 </div>
@@ -138,8 +138,8 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="w-[450px] flex-shrink-0 pl-0">
-          <div className="w-[450px] bg-white border border-gray-200 rounded-xl shadow-lg p-8">
+        <div className="w-[clamp(280px,36vw,450px)] flex-shrink-0">
+          <div className="mx-auto w-full rounded-xl border border-gray-200 bg-white p-6 shadow-lg sm:p-8">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">欢迎使用OfficeClaw</h2>
             </div>

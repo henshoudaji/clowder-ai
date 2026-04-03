@@ -110,7 +110,7 @@ export function ModelSelectDropdownDraft({
 
   return (
     <div
-      className="ui-panel flex max-h-[335px] w-[476px] flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-panel)] shadow-[0_10px_24px_rgba(0,0,0,0.09)]"
+      className="ui-panel flex max-h-[335px] w-full flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-panel)] shadow-[0_10px_24px_rgba(0,0,0,0.09)]"
       data-testid="model-select-dropdown"
     >
       <div className="px-[10px] pb-1 pt-[10px]">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/utils/api-client';
+import { NameInitialIcon } from './NameInitialIcon';
 import styles from './HubSkillsTab.module.css';
 
 interface SearchSkill {
@@ -39,22 +40,6 @@ const SILL_SQUARE_LABEL = '技能广场';
 function getSkillCategory(skill: SearchSkill): string {
   const primaryTag = skill.tags.find((tag) => tag.trim().length > 0);
   return primaryTag ? primaryTag.replace(/[-_]/g, ' ') : GENERAL_CATEGORY;
-}
-
-function getSkillInitial(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const [initial] = Array.from(trimmed);
-  return /[a-z]/i.test(initial) ? initial.toUpperCase() : initial;
-}
-
-function SkillArtwork({ name }: { name: string }) {
-  const initial = getSkillInitial(name);
-  return (
-    <div aria-hidden="true" className={styles.artwork}>
-      <span className={styles.artworkInitial}>{initial}</span>
-    </div>
-  );
 }
 
 function InstallButton({
@@ -106,7 +91,7 @@ function SkillList({
           return (
             <article key={skill.id} className={styles.card}>
               <div className={styles.header}>
-                <SkillArtwork name={skill.name} />
+                <NameInitialIcon name={skill.name} />
                 <div className={styles.content}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

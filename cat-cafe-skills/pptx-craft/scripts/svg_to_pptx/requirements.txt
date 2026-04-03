@@ -1,0 +1,10 @@
+# Core dependencies
+python-pptx>=0.6.21
+
+# SVG to PNG conversion (choose one)
+# Option 1: CairoSVG (recommended - full gradient/filter support)
+cairosvg>=2.5.0
+
+# Option 2: svglib + reportlab (lightweight alternative)
+# svglib>=0.8.1
+# reportlab>=4.0.0

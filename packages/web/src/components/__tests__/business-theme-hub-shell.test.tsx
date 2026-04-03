@@ -162,4 +162,22 @@ describe('business theme hub shell', () => {
     });
     expect(onImport).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps filter controls visible and shows empty state when search has no matches', async () => {
+    await act(async () => {
+      root.render(React.createElement(HubCapabilityTab));
+    });
+    await flushEffects();
+
+    const searchInput = container.querySelector('input[aria-label="搜索我的技能"]') as HTMLInputElement | null;
+    expect(searchInput).not.toBeNull();
+
+    await changeInputValue(searchInput!, 'no-such-skill');
+
+    expect(container.querySelector('select[aria-label="筛选来源"]')).not.toBeNull();
+    expect(container.querySelector('input[aria-label="搜索我的技能"]')).not.toBeNull();
+    expect(container.textContent).toContain('未找到匹配技能');
+    expect(container.textContent).not.toContain('ops-skill');
+    expect(container.textContent).not.toContain('doc-skill');
+  });
 });

@@ -333,6 +333,15 @@ export interface CliConfigPaths {
 /** Providers that support streamableHttp transport (URL-based MCP). */
 const STREAMABLE_HTTP_PROVIDERS = new Set(['anthropic']);
 
+function isTransportSupportedForProvider(
+  provider: string | undefined,
+  mcpServer: NonNullable<CapabilityEntry['mcpServer']>,
+): boolean {
+  return mcpServer.transport === 'streamableHttp'
+    ? provider !== undefined && STREAMABLE_HTTP_PROVIDERS.has(provider) && !!mcpServer.url?.trim()
+    : hasUsableTransport(mcpServer);
+}
+
 /**
  * Resolve effective MCP servers for a specific cat.
  * Applies global enabled + per-cat overrides + provider transport compatibility.
@@ -353,12 +362,51 @@ export function resolveServersForCat(config: CapabilitiesConfig, catId: string):
       const enabledFromConfig = override ? override.enabled : cap.enabled;
       // Guardrail: entries without usable transport stay disabled for writer cleanup.
       // Also gate streamableHttp by provider — only Anthropic supports URL transport.
-      const transportSupported =
-        mcpServer.transport === 'streamableHttp'
-          ? provider !== undefined && STREAMABLE_HTTP_PROVIDERS.has(provider) && !!mcpServer.url?.trim()
-          : hasUsableTransport(mcpServer);
+      const transportSupported = isTransportSupportedForProvider(provider, mcpServer);
       const enabled = enabledFromConfig && transportSupported;
 
+      const desc: McpServerDescriptor = {
+        name: cap.id,
+        command: mcpServer.command,
+        args: mcpServer.args,
+        enabled,
+        source: cap.source,
+      };
+      if (mcpServer.transport) desc.transport = mcpServer.transport;
+      if (mcpServer.url) desc.url = mcpServer.url;
+      if (mcpServer.headers) desc.headers = mcpServer.headers;
+      if (mcpServer.env) desc.env = mcpServer.env;
+      if (mcpServer.workingDir) desc.workingDir = mcpServer.workingDir;
+      return desc;
+    });
+}
+
+function resolveServersForProvider(config: CapabilitiesConfig, provider: string): McpServerDescriptor[] {
+  const catIds = catRegistry
+    .getAllIds()
+    .filter((catId) => catRegistry.tryGet(catId as string)?.config.provider === provider);
+
+  if (catIds.length > 0) {
+    const byName = new Map<string, McpServerDescriptor>();
+    for (const catId of catIds) {
+      for (const server of resolveServersForCat(config, catId as string)) {
+        const existing = byName.get(server.name);
+        if (!existing || (server.enabled && !existing.enabled)) {
+          byName.set(server.name, server);
+        }
+      }
+    }
+    return Array.from(byName.values());
+  }
+
+  return config.capabilities
+    .filter((cap) => cap.type === 'mcp' && cap.mcpServer)
+    .map((cap) => {
+      const mcpServer = cap.mcpServer;
+      if (!mcpServer) {
+        throw new Error(`MCP capability ${cap.id} is missing mcpServer configuration`);
+      }
+      const enabled = cap.enabled && isTransportSupportedForProvider(provider, mcpServer);
       const desc: McpServerDescriptor = {
         name: cap.id,
         command: mcpServer.command,
@@ -404,6 +452,9 @@ function collectServersPerProvider(config: CapabilitiesConfig): Record<string, M
   const result: Record<string, McpServerDescriptor[]> = {};
   for (const [provider, serverMap] of Object.entries(providerServers)) {
     result[provider] = Array.from(serverMap.values());
+  }
+  if (!result.anthropic) {
+    result.anthropic = resolveServersForProvider(config, 'anthropic');
   }
   return result;
 }

@@ -480,6 +480,10 @@ def get_agent_skills_dir() -> Path:
     return get_agent_root_dir() / "skills"
 
 
+def get_agent_tools_dir() -> Path:
+    return get_agent_root_dir() / "tools"
+
+
 def get_agent_sessions_dir() -> Path:
     return get_agent_root_dir() / "sessions"
 

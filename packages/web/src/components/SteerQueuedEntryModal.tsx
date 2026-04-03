@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 export type SteerMode = 'immediate' | 'promote';
 
@@ -15,8 +15,6 @@ export function SteerQueuedEntryModal({
   onConfirm: () => void;
   onModeChange: (mode: SteerMode) => void;
 }) {
-  const modalRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
@@ -26,15 +24,8 @@ export function SteerQueuedEntryModal({
   }, [onCancel]);
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-close, keyboard Escape handled via useEffect
-    <div
-      role="presentation"
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-      onClick={(e) => {
-        if (modalRef.current && !modalRef.current.contains(e.target as Node)) onCancel();
-      }}
-    >
-      <div ref={modalRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 overflow-hidden">
+    <div role="presentation" className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 overflow-hidden">
         <div className="px-6 pt-6 pb-4">
           <h2 className="text-lg font-semibold text-cafe-black">Steer 这条排队消息</h2>
           <p className="text-sm text-gray-500 mt-1">选择你希望如何处理这条 queued 消息：</p>
