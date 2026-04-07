@@ -186,3 +186,37 @@ graph LR
 - 增量同步在同一小时内完成最近更新的变化，且无数据丢失。
 - UI 展现与现有技能广场一致，且来源标识清晰可辨。
 - 错误情况下可回退到缓存并显示友好提示，且无需阻塞其他功能。
+
+
+GET /api/v1/skills
+功能：获取技能列表（可跨源，默认仅返回公开、已发布的技能）
+查询参数：
+source: string | null（过滤来源，如 'skillhub'）
+query: string | null（全文搜索字符串）
+tags: string[] | null
+status: string | null
+mapped: boolean | null
+updatedAfter: string | null（ISO 时间戳）
+page: number | null
+pageSize: number | null
+sort: string | null（如 'updateTime_desc', 'name_asc'）
+响应：
+200: { total: number, page: number, pageSize: number, items: SkillMeta[] }
+401/403/429/5xx：错误对象
+GET /api/v1/skills/{id}
+功能：获取单个技能的详细信息（包括元数据、版本、映射、来源、最近更新）
+路径参数：id: string
+响应：200: SkillDetailResponse；404: 错误对象
+POST /api/v1/skills/sync
+功能：启动技能源的同步作业（增量/全量）
+请求体：{ mode: 'incremental'|'full', source?: string, force?: boolean }
+响应：202: { jobId: string, status: 'scheduled' }； 202/202 也可附带 initial status
+GET /api/v1/skills/sync/{jobId}
+功能：查询指定同步作业状态与进度
+响应：200: SyncJobResponse
+POST /api/v1/skills/mapping/import
+功能：提交或更新 SkillHub 字段映射到本地字段的映射表
+请求体：{ mappings: Array<{ hubField: string, localField: string, dataType?: string, description?: string }>, dryRun?: boolean }
+响应：200: { applied: number, warnings?: string[] }
+GET /api/v1/health
+简单健康检查
