@@ -10,7 +10,7 @@ import { createRedisClient, SessionStore } from '@cat-cafe/shared/utils';
 import cors from '@fastify/cors';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify from 'fastify';
-import { generateCliConfigs, readCapabilitiesConfig } from './config/capabilities/capability-orchestrator.js';
+import { orchestrate } from './config/capabilities/capability-orchestrator.js';
 import { resolveBoundAccountRefForCat } from './config/cat-account-binding.js';
 import { getCatContextBudget } from './config/cat-budgets.js';
 import {
@@ -84,6 +84,8 @@ import {
   loadConnectorGatewayConfig,
   startConnectorGateway,
 } from './infrastructure/connectors/connector-gateway-bootstrap.js';
+import { MemoryConnectorThreadBindingStore } from './infrastructure/connectors/ConnectorThreadBindingStore.js';
+import { RedisConnectorThreadBindingStore } from './infrastructure/connectors/RedisConnectorThreadBindingStore.js';
 import {
   CiCdRouter,
   ConnectorInvokeTrigger,
@@ -170,6 +172,7 @@ import { terminalRoutes } from './routes/terminal.js';
 import { threadExportRoutes } from './routes/thread-export.js';
 import { ApiInstanceLease, type ApiInstanceLeaseInvalidation } from './services/ApiInstanceLease.js';
 import { resolveActiveProjectRoot } from './utils/active-project-root.js';
+import { resolveCatCafeHostRoot } from './utils/cat-cafe-root.js';
 import {
   resolveJiuwenClawAppDir,
   resolveJiuwenClawExecutable,
@@ -521,6 +524,66 @@ async function main(): Promise<void> {
     } catch (err) {
       app.log.warn(`[api] F102 Phase G: scheduler init failed (non-fatal): ${err}`);
     }
+  }
+
+  // ── F139: Unified Scheduler (TaskRunnerV2) — additive, runs alongside V1 ──
+  // Hoist reference so invokeTrigger (created later) can be late-bound
+  let taskRunnerV2Ref: import('./infrastructure/scheduler/TaskRunnerV2.js').TaskRunnerV2 | null = null;
+  try {
+    const { TaskRunnerV2 } = await import('./infrastructure/scheduler/TaskRunnerV2.js');
+    const { RunLedger } = await import('./infrastructure/scheduler/RunLedger.js');
+    const { createActorResolver } = await import('./infrastructure/scheduler/ActorResolver.js');
+    const { getRoster } = await import('./config/cat-config-loader.js');
+    const schedulerDb = memoryServices.store.getDb();
+    const runLedger = new RunLedger(schedulerDb);
+    const actorResolver = createActorResolver(getRoster);
+
+    // Governance + Emission stores
+    const { GlobalControlStore } = await import('./infrastructure/scheduler/GlobalControlStore.js');
+    const { EmissionStore } = await import('./infrastructure/scheduler/EmissionStore.js');
+    const { PackTemplateStore } = await import('./infrastructure/scheduler/PackTemplateStore.js');
+    const globalControlStore = new GlobalControlStore(schedulerDb);
+    const emissionStore = new EmissionStore(schedulerDb);
+    const packTemplateStore = new PackTemplateStore(schedulerDb);
+
+    // Delivery + content fetch for template execution
+    const { createDeliverFn } = await import('./infrastructure/scheduler/delivery.js');
+    const { createFetchContentFn } = await import('./infrastructure/scheduler/content-fetcher.js');
+    const schedulerDeliver = createDeliverFn({ messageStore, socketManager: getSocketManager() });
+    const schedulerFetchContent = createFetchContentFn();
+
+    const taskRunnerV2 = new TaskRunnerV2({
+      logger: { info: app.log.info.bind(app.log), error: app.log.error.bind(app.log) },
+      ledger: runLedger,
+      actorResolver,
+      globalControlStore,
+      emissionStore,
+      deliver: schedulerDeliver,
+      fetchContent: schedulerFetchContent,
+    });
+
+    // Dynamic task store + template registry
+    const { DynamicTaskStore } = await import('./infrastructure/scheduler/DynamicTaskStore.js');
+    const { templateRegistry } = await import('./infrastructure/scheduler/templates/registry.js');
+    const dynamicTaskStore = new DynamicTaskStore(schedulerDb);
+
+    // Schedule panel API routes
+    const { scheduleRoutes } = await import('./routes/schedule.js');
+    await app.register(scheduleRoutes, {
+      taskRunner: taskRunnerV2,
+      dynamicTaskStore,
+      templateRegistry,
+      globalControlStore,
+      packTemplateStore,
+    });
+
+    // Hydrate persisted dynamic tasks + start
+    taskRunnerV2.hydrateDynamic(dynamicTaskStore, templateRegistry);
+    taskRunnerV2.start();
+    taskRunnerV2Ref = taskRunnerV2;
+    app.log.info(`[api] F139: TaskRunnerV2 started, tasks: [${taskRunnerV2.getRegisteredTasks().join(', ')}]`);
+  } catch (err) {
+    app.log.warn(`[api] F139: TaskRunnerV2 init failed (non-fatal): ${err}`);
   }
 
   // ── F32-b/F127: Bootstrap runtime catalog, then populate CatRegistry (all variants) ──
@@ -893,6 +956,9 @@ async function main(): Promise<void> {
     auditStore: authAuditStore,
     io: socketManager.getIO(),
   });
+  const connectorBindingStore = redisClient
+    ? new RedisConnectorThreadBindingStore(redisClient)
+    : new MemoryConnectorThreadBindingStore();
   await app.register(callbackAuthRoutes, { registry, authManager });
   await app.register(authorizationRoutes, {
     authManager,
@@ -902,6 +968,7 @@ async function main(): Promise<void> {
   });
   await app.register(threadsRoutes, {
     threadStore,
+    connectorBindingStore,
     messageStore,
     taskStore,
     memoryStore,
@@ -1241,21 +1308,27 @@ async function main(): Promise<void> {
     app.log.warn(`[api] Audit log write failed (best-effort): ${String(err)}`);
   }
 
-  // Best-effort: regenerate CLI configs at startup so .gemini/settings.json
-  // always has the latest env placeholders (Gemini MCP env injection)
+  // Best-effort: bootstrap capabilities + regenerate CLI configs at startup so
+  // project-level MCP config files exist even before the Hub page is opened.
   try {
-    const root = process.cwd();
-    const capConfig = await readCapabilitiesConfig(root);
-    if (capConfig) {
-      await generateCliConfigs(capConfig, {
+    const root = resolveCatCafeHostRoot(process.cwd());
+    await orchestrate(
+      root,
+      {
+        claudeConfig: join(root, '.mcp.json'),
+        codexConfig: join(root, '.codex', 'config.toml'),
+        geminiConfig: join(root, '.gemini', 'settings.json'),
+      },
+      {
         anthropic: join(root, '.mcp.json'),
         openai: join(root, '.codex', 'config.toml'),
         google: join(root, '.gemini', 'settings.json'),
-      });
-      app.log.info('[api] CLI configs regenerated at startup');
-    }
+      },
+      { catCafeRepoRoot: root },
+    );
+    app.log.info('[api] capabilities bootstrapped and CLI configs regenerated at startup');
   } catch (err) {
-    app.log.warn(`[api] CLI config regeneration failed (best-effort): ${String(err)}`);
+    app.log.warn(`[api] capability bootstrap / CLI config regeneration failed (best-effort): ${String(err)}`);
   }
 
   // F101 Phase G: Recover auto-play loops for active games after restart.
@@ -1271,6 +1344,8 @@ async function main(): Promise<void> {
     }
   }
 
+  // F139 Phase 4b: late-bind invokeTrigger so scheduler templates can wake cats
+  // (TaskRunnerV2 is constructed before invokeTrigger exists; bind here after both are ready)
   // Phase 3b: connector invoke trigger (auto-invoke cat after review email routing)
   const frontendBaseUrl = resolveFrontendBaseUrl(process.env, app.log);
   const invokeTrigger = new ConnectorInvokeTrigger({
@@ -1291,6 +1366,12 @@ async function main(): Promise<void> {
     },
     log: app.log,
   });
+
+  // F139 Phase 4b: late-bind invokeTrigger so scheduler templates can wake cats
+  if (taskRunnerV2Ref) {
+    taskRunnerV2Ref.setInvokeTrigger(invokeTrigger);
+    app.log.info('[api] F139: invokeTrigger bound to TaskRunnerV2');
+  }
 
   // Start email watcher AFTER listen (non-blocking, best-effort)
   await startGithubReviewWatcher({
@@ -1317,6 +1398,7 @@ async function main(): Promise<void> {
   try {
     const gatewayConfig = loadConnectorGatewayConfig();
     connectorGatewayHandle = await startConnectorGateway(gatewayConfig, {
+      bindingStore: connectorBindingStore,
       messageStore: {
         async append(input) {
           const result = await messageStore.append(input);
@@ -1371,6 +1453,8 @@ async function main(): Promise<void> {
       (connectorHubOpts as { weixinAdapter?: unknown }).weixinAdapter = connectorGatewayHandle.weixinAdapter;
       (connectorHubOpts as { startWeixinPolling?: () => void }).startWeixinPolling =
         connectorGatewayHandle.startWeixinPolling;
+      (connectorHubOpts as { activateWeixinBotToken?: (token: string) => Promise<void> }).activateWeixinBotToken =
+        connectorGatewayHandle.activateWeixinBotToken;
       // F134 Phase D: Wire permission store to hub routes
       (connectorHubOpts as { permissionStore?: unknown }).permissionStore = connectorGatewayHandle.permissionStore;
       app.log.info('[api] Connector gateway started');

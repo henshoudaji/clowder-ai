@@ -103,7 +103,7 @@ export function VoteConfigModal({
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="例：谁最绿茶？"
               maxLength={500}
-              className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-cocreator-primary"
+              className="ui-input w-full text-sm px-3 py-2 rounded-lg"
             />
           </div>
 
@@ -119,7 +119,7 @@ export function VoteConfigModal({
                     onChange={(e) => updateOption(i, e.target.value)}
                     placeholder={`选项 ${i + 1}`}
                     maxLength={100}
-                    className="flex-1 text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-cocreator-primary"
+                    className="ui-input flex-1 text-sm px-3 py-2 rounded-lg"
                     onKeyDown={(e) => {
                       if (e.nativeEvent.isComposing) return;
                       if (e.key === 'Enter') {

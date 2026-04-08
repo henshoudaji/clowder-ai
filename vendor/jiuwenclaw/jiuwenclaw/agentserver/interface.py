@@ -32,7 +32,6 @@ from jiuwenclaw.utils import (
     get_agent_registered_skill_dirs,
     get_checkpoint_dir,
     get_env_file,
-    get_project_workspace_dir,
     get_workspace_dir,
     logger,
     sync_shared_agent_skills_cache,
@@ -86,6 +85,7 @@ from jiuwenclaw.agentserver.permissions import (
     PermissionLevel,
 )
 from jiuwenclaw.agentserver.skill_manager import SkillManager, _SKILLS_DIR
+from jiuwenclaw.agentserver.tool_manager import ToolManager
 from jiuwenclaw.evolution.service import EvolutionService
 from jiuwenclaw.schema.agent import AgentRequest, AgentResponse, AgentResponseChunk
 from jiuwenclaw.agentserver.memory import get_memory_manager
@@ -141,6 +141,29 @@ _SKILL_ROUTES: dict[ReqMethod, str] = {
     ReqMethod.SKILLS_SKILLNET_INSTALL_STATUS: "handle_skills_skillnet_install_status",
 }
 
+# Tools 管理请求路由表（与 _SKILL_ROUTES 相同模式，具体逻辑在 ToolManager）
+_TOOL_ROUTES: dict[ReqMethod, str] = {
+    ReqMethod.TOOLS_ADD: "handle_tools_add",
+}
+
+
+def _log_agent_chat_request(*, label: str, request: AgentRequest, session_id: str) -> None:
+    """记录 chat 相关请求的完整参数（含 query、system_prompt、整包 params）。"""
+    params = request.params if isinstance(request.params, dict) else {}
+    rm = getattr(request.req_method, "value", None) or str(request.req_method)
+    record: dict[str, Any] = {
+        "label": label,
+        "request_id": request.request_id,
+        "channel_id": request.channel_id,
+        "session_id_resolved": session_id,
+        "session_id_raw": request.session_id,
+        "req_method": rm,
+        "query": params.get("query", ""),
+        "system_prompt": params.get("system_prompt", ""),
+        "params": params,
+    }
+    logger.info("[AgentServer] chat_request %s", json.dumps(record, ensure_ascii=False, default=str))
+
 
 class JiuWenClaw:
     """基于 openJiuwen ReActAgent 的 AgentServer 实现."""
@@ -149,6 +172,7 @@ class JiuWenClaw:
         self._instance: JiuClawReActAgent | None = None
         self._skill_manager = SkillManager()
         self._skill_manager.set_skillnet_install_complete_hook(self.create_instance)
+        self._tool_manager = ToolManager(get_agent=lambda: self._instance)
         self._session_tasks: dict[str, asyncio.Task] = {}  # session_id -> running_task
         self._session_priorities: dict[str, int] = {}  # session_id -> 优先级计数器（用于先进后出）
         self._session_queues: dict[str, asyncio.PriorityQueue] = {}  # session_id -> 优先队列
@@ -259,6 +283,11 @@ class JiuWenClaw:
                 - workspace_dir: 工作区目录，默认 "agent"（memory 落在 agent/memory 下）。
                 - 其余字段透传给 ReActAgentConfig。
         """
+        logger.info(
+            "[AgentServer] create_instance 开始 agent_name=%s workspace_dir=%s",
+            self._agent_name,
+            self._workspace_dir,
+        )
         await self.set_checkpoint()
 
         config_base = get_config()
@@ -268,7 +297,7 @@ class JiuWenClaw:
         agent_config = self._load_react_config(config_base)
 
         sysop_card_id: str | None = None
-        project_workspace_dir = get_project_workspace_dir()
+        project_workspace_dir = get_agent_root_dir()
         try:
             sysop_card = SysOperationCard(
                 mode=OperationMode.LOCAL,
@@ -386,6 +415,35 @@ class JiuWenClaw:
             self._instance.ability_manager.add(mcp_tool.card)
         self._mcp_tools_registered = True
 
+        project_mcp_names: set[str] = set()
+        host_project_mcp_path = self._tool_manager.find_host_project_mcp_json()
+        try:
+            if host_project_mcp_path is None:
+                logger.info(
+                    "[JiuWenClaw] 未找到宿主项目 .mcp.json，跳过 MCP 工具导入: CAT_CAFE_MCP_CWD=%s",
+                    os.getenv("CAT_CAFE_MCP_CWD", ""),
+                )
+            else:
+                project_mcp_payload = await self._tool_manager.load_project_mcp_json(host_project_mcp_path)
+                project_mcp_names = {
+                    item["name"]
+                    for item in project_mcp_payload.get("saved", [])
+                    if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
+                }
+                if not project_mcp_payload.get("skipped"):
+                    logger.info(
+                        "[JiuWenClaw] 已从宿主项目 .mcp.json 导入 MCP 工具: count=%s source=%s",
+                        len(project_mcp_names),
+                        project_mcp_payload.get("source", str(host_project_mcp_path)),
+                    )
+        except Exception as exc:
+            logger.warning("[JiuWenClaw] 从宿主项目 .mcp.json 导入 MCP 工具失败: %s", exc)
+
+        try:
+            await self._tool_manager.load_tools_from_disk(skip_server_names=project_mcp_names)
+        except Exception as exc:
+            logger.warning("[JiuWenClaw] 从 agent/tools 加载落盘 MCP 工具失败: %s", exc)
+
         if self._compaction_manager is None:
             memory_mgr = await get_memory_manager(
                 agent_id=self._agent_name,
@@ -478,6 +536,11 @@ class JiuWenClaw:
             permissions_cfg.get("enabled", True),
         )
         logger.info("[JiuWenClaw] 初始化完成: agent_name=%s", self._agent_name)
+        logger.info(
+            "[AgentServer] create_instance 结束 agent_name=%s workspace_dir=%s",
+            self._agent_name,
+            self._workspace_dir,
+        )
 
     def reload_agent_config(self) -> None:
         """从 config.yaml 重新加载配置并 reconfigure 当前实例，使模型/API 等配置生效且不重启进程。"""
@@ -523,6 +586,7 @@ class JiuWenClaw:
             request_id: str | None,
             mode="plan",
             project_dir: str | None = None,
+            cat_cafe_mcp: dict[str, Any] | None = None,
     ) -> None:
         """Register per-request tools for current agent execution."""
         if self._instance is None:
@@ -534,7 +598,6 @@ class JiuWenClaw:
             resolved = project_dir.strip()
             set_request_workspace(resolved)
             self._workspace_dir = resolved
-            logger.info("[JiuWenClaw] per-request project_dir: %s", resolved)
         else:
             set_request_workspace(None)  # fall back to default ~/.jiuwenclaw workspace
 
@@ -694,6 +757,12 @@ class JiuWenClaw:
                 Runner.resource_mgr.add_tool(mcp_tool)
                 self._instance.ability_manager.add(mcp_tool.card)
             self._mcp_tools_registered = True
+
+        if cat_cafe_mcp:
+            try:
+                await self._tool_manager.register_request_scoped_cat_cafe_mcp(cat_cafe_mcp)
+            except Exception as exc:
+                logger.warning("[JiuWenClaw] ensure request-scoped Cat Cafe MCP failed: %s", exc)
 
         config_base = get_config()
         self._instance._config.prompt_template = [{
@@ -1033,6 +1102,28 @@ class JiuWenClaw:
                 metadata=request.metadata,
             )
 
+        if request.req_method in _TOOL_ROUTES:
+            handler_name = _TOOL_ROUTES[request.req_method]
+            handler = getattr(self._tool_manager, handler_name)
+            try:
+                payload = await handler(request.params)
+            except Exception as exc:
+                logger.error("[JiuWenClaw] tools 请求处理失败: %s", exc)
+                return AgentResponse(
+                    request_id=request.request_id,
+                    channel_id=request.channel_id,
+                    ok=False,
+                    payload={"error": str(exc)},
+                    metadata=request.metadata,
+                )
+            return AgentResponse(
+                request_id=request.request_id,
+                channel_id=request.channel_id,
+                ok=True,
+                payload=payload,
+                metadata=request.metadata,
+            )
+
         # 原有 chat 逻辑
         if self._instance is None:
             raise RuntimeError("JiuWenClaw 未初始化，请先调用 create_instance()")
@@ -1061,19 +1152,33 @@ class JiuWenClaw:
         # 确保 session 的任务处理器在运行
         await self._ensure_session_processor(session_id)
 
-        logger.info(
-            "[JiuWenClaw] 处理请求: request_id=%s channel_id=%s session_id=%s",
-            request.request_id, request.channel_id, session_id,
+        _log_agent_chat_request(
+            label="process_message_unary",
+            request=request,
+            session_id=session_id,
         )
         config_base = get_config()
+        system_prompt_append = request.params.get("system_prompt")
+        if isinstance(system_prompt_append, str):
+            system_prompt_append = system_prompt_append.strip() or None
+        else:
+            system_prompt_append = None
+        built_user_prompt = build_user_prompt(
+            request.params.get("query", ""),
+            files=request.params.get("files", {}),
+            channel=request.session_id.split('_')[0],
+            language=config_base.get("preferred_language", "zh"),
+        )
+        logger.info(
+            "[AgentServer] system_prompt_append request_id=%s session_id=%s\n%s",
+            request.request_id,
+            session_id,
+            system_prompt_append if system_prompt_append else "",
+        )
         inputs = {
             "conversation_id": request.session_id,
-            "query": build_user_prompt(
-                request.params.get("query", ""),
-                files=request.params.get("files", {}),
-                channel=request.session_id.split('_')[0],
-                language=config_base.get("preferred_language", "zh")
-            ),
+            "query": built_user_prompt,
+            **({"system_prompt_append": system_prompt_append} if system_prompt_append else {}),
         }
 
         if self._compaction_manager:
@@ -1098,6 +1203,7 @@ class JiuWenClaw:
                     request.request_id,
                     request.params.get("mode", "plan"),
                     project_dir=request.params.get("project_dir"),
+                    cat_cafe_mcp=request.params.get("cat_cafe_mcp") if isinstance(request.params.get("cat_cafe_mcp"), dict) else None,
                 )
                 return await Runner.run_agent(agent=self._instance, inputs=inputs)
             except asyncio.CancelledError:
@@ -1200,19 +1306,33 @@ class JiuWenClaw:
         )
         await self._ensure_session_processor(session_id)
 
-        logger.info(
-            "[JiuWenClaw] 处理流式请求: request_id=%s channel_id=%s session_id=%s",
-            request.request_id, request.channel_id, session_id,
+        _log_agent_chat_request(
+            label="process_message_stream",
+            request=request,
+            session_id=session_id,
         )
         config_base = get_config()
+        system_prompt_append = request.params.get("system_prompt")
+        if isinstance(system_prompt_append, str):
+            system_prompt_append = system_prompt_append.strip() or None
+        else:
+            system_prompt_append = None
+        built_user_prompt = build_user_prompt(
+            request.params.get("query", ""),
+            files=request.params.get("files", {}),
+            channel=request.session_id.split('_')[0],
+            language=config_base.get("preferred_language", "zh"),
+        )
+        logger.info(
+            "[AgentServer] system_prompt_append request_id=%s session_id=%s\n%s",
+            request.request_id,
+            session_id,
+            system_prompt_append if system_prompt_append else "",
+        )
         inputs = {
             "conversation_id": request.session_id,
-            "query": build_user_prompt(
-                request.params.get("query", ""),
-                files=request.params.get("files", {}),
-                channel=request.session_id.split('_')[0],
-                language=config_base.get("preferred_language", "zh")
-            ),
+            "query": built_user_prompt,
+            **({"system_prompt_append": system_prompt_append} if system_prompt_append else {}),
         }
 
         # supplement 任务：读取现有 todo 待办，拼入 query 让 agent 知道有未完成的任务
@@ -1242,6 +1362,7 @@ class JiuWenClaw:
                     request.request_id,
                     request.params.get("mode", "plan"),
                     project_dir=request.params.get("project_dir"),
+                    cat_cafe_mcp=request.params.get("cat_cafe_mcp") if isinstance(request.params.get("cat_cafe_mcp"), dict) else None,
                 )
                 async for chunk in Runner.run_agent_streaming(self._instance, inputs):
                     parsed = self._parse_stream_chunk(chunk)

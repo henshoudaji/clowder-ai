@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import type { CatData } from '@/hooks/useCatData';
+import { getCachedCats, type CatData } from '@/hooks/useCatData';
 import { useCoCreatorConfig } from '@/hooks/useCoCreatorConfig';
 import { useTts } from '@/hooks/useTts';
 import { hexToRgba, tintedLight } from '@/lib/color-utils';
@@ -16,6 +16,7 @@ import { toCliEvents } from './cli-output/toCliEvents';
 import { DirectionPill } from './DirectionPill';
 import { EvidencePanel } from './EvidencePanel';
 import { GovernanceBlockedCard } from './GovernanceBlockedCard';
+import { IntentRecognitionPlaceholder } from './IntentRecognitionPlaceholder';
 import { MarkdownContent } from './MarkdownContent';
 import { MetadataBadge } from './MetadataBadge';
 import { ReplyPill } from './ReplyPill';
@@ -99,6 +100,27 @@ export function ChatMessage({ message, getCatById }: ChatMessageProps) {
       : ('done' as const);
   const thinkingLabel = cliStatus === 'done' ? '完成深度思考' : '深度思考中';
 
+  if (message.variant === 'intent_recognition') {
+    const fallbackCatId =
+      getCachedCats().find((cat) => cat.roster?.available !== false)?.id ?? getCachedCats()[0]?.id ?? '';
+    const resolvedCatId = message.catId ?? fallbackCatId;
+    const resolvedCatData = message.catId ? catData : resolvedCatId ? getCatById(resolvedCatId) : undefined;
+    return (
+      <IntentRecognitionPlaceholder
+        catId={resolvedCatId}
+        label={
+          (message.catId ? catStyle?.label : undefined) ??
+          resolvedCatData?.displayName ??
+          message.catId ??
+          resolvedCatId ??
+          '主智能体'
+        }
+        timestamp={message.timestamp}
+        status={message.content === 'stopped' ? 'stopped' : 'pending'}
+      />
+    );
+  }
+
   if (isSummary && message.summary) {
     return (
       <div data-message-id={message.id}>
@@ -154,13 +176,13 @@ export function ChatMessage({ message, getCatById }: ChatMessageProps) {
         ? 'text-purple-700 bg-purple-50 border border-purple-200'
         : isError
           ? 'text-red-500 bg-red-50 rounded-full'
-          : 'text-blue-700 bg-blue-50';
+          : 'text-blue-700 bg-blue-50 hidden';
     return (
       <div data-message-id={message.id} className={`flex justify-center ${isTool ? 'mb-1' : 'mb-3'}`}>
         <div className={`text-sm px-4 py-2 rounded-lg whitespace-pre-wrap text-left max-w-[85%] ${toneClass}`}>
           {isFollowup && <span className="mr-1">🔗</span>}
           {message.content}
-          {isFollowup && <span className="block mt-1 text-xs text-purple-500">输入 @猫名 跟进 来发起 follow-up</span>}
+          {isFollowup && <span className="block mt-1 text-xs text-purple-500">输入 @智能体 跟进 来发起 follow-up</span>}
         </div>
       </div>
     );
@@ -353,6 +375,7 @@ export function ChatMessage({ message, getCatById }: ChatMessageProps) {
               thinkingMode={currentThread?.thinkingMode}
               defaultExpanded={uiThinkingExpandedByDefault}
               breedColor={catData?.color.primary}
+              projectPath={currentThread?.projectPath}
             />
           )}
           {message.extra?.rich?.blocks && message.extra.rich.blocks.length > 0 && (
@@ -363,7 +386,7 @@ export function ChatMessage({ message, getCatById }: ChatMessageProps) {
           )}
         </div>
         <div style={{ display: 'none', height: 1, backgroundColor: 'rgb(240, 240, 240)', margin: '8px 0' }} />
-        {!message.isStreaming && message.metadata && <MetadataBadge metadata={message.metadata} />}
+        {false && !message.isStreaming && message.metadata && <MetadataBadge metadata={message.metadata} />}
       </div>
     </div>
   );

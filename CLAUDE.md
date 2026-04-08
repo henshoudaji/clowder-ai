@@ -130,7 +130,7 @@ cat.breeds.forEach(b => { const v=b.variants[0]; console.log(b.catId, v.provider
 
 期望输出：
 - `modelarts-shared api_key`
-- `agent-teams acp <INSTALL_DIR>\tools\python\Scripts\agent-teams.exe`
+- `relay-teams acp <INSTALL_DIR>\tools\python\Scripts\relay-teams.exe`
 - catalog 里 office/dare、assistant/relayclaw、agentteams/acp 三条
 
 ### 6. 启动服务 & 端到端验证
@@ -145,7 +145,7 @@ cd "$INSTALL_DIR" && node scripts/start-entry.mjs start
 浏览器打开后分别发送：
 - `@office 请只回复 OK` — 验证 dare agent
 - `@assistant 请只回复 OK` — 验证 relayclaw agent
-- `@agentteams 请只回复 ACP OK` — 验证 ACP agent-teams
+- `@agentteams 请只回复 ACP OK` — 验证 ACP relay-teams
 
 ### 关键文件打包清单
 

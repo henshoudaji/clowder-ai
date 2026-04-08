@@ -291,7 +291,7 @@ export function buildReviewMessageContent(
     lines.push('', `_基于最新 review（${reviewContent.since}）的增量扫描_`);
   }
 
-  lines.push('', `请处理 review 意见。完成后通知铲屎官确认合入。`);
+  lines.push('', `请处理 review 意见。完成后通知用户确认合入。`);
 
   return lines.join('\n');
 }

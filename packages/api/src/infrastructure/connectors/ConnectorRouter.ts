@@ -86,6 +86,7 @@ export interface ConnectorRouterOptions {
   readonly socketManager?:
     | {
         broadcastToRoom(room: string, event: string, data: unknown): void;
+        emitToUser?(userId: string, event: string, data: unknown): void;
       }
     | undefined;
   readonly defaultUserId: string;
@@ -247,6 +248,7 @@ export class ConnectorRouter {
           };
           const mentionPatterns = this.getMentionPatterns();
           const { targetCatId } = parseMentions(fwdText, mentionPatterns, this.opts.defaultCatId);
+          const fwdTimestamp = Date.now();
           const fwdStored = await messageStore.append({
             threadId: fwdThreadId,
             userId: this.resolveOwnerUserId(),
@@ -254,13 +256,17 @@ export class ConnectorRouter {
             content: fwdText,
             source: fwdSource,
             mentions: [targetCatId],
-            timestamp: Date.now(),
+            timestamp: fwdTimestamp,
           });
           socketManager?.broadcastToRoom(`thread:${fwdThreadId}`, 'connector_message', {
             threadId: fwdThreadId,
-            messageId: fwdStored.id,
-            connectorId,
-            content: fwdText,
+            message: {
+              id: fwdStored.id,
+              type: 'connector',
+              content: fwdText,
+              source: fwdSource,
+              timestamp: fwdTimestamp,
+            },
           });
           invokeTrigger.trigger(fwdThreadId, targetCatId, this.resolveOwnerUserId(), fwdText, fwdStored.id);
           log.info({ connectorId, threadId: fwdThreadId }, '[ConnectorRouter] /thread message forwarded');
@@ -293,6 +299,10 @@ export class ConnectorRouter {
           : `${def?.displayName ?? connectorId} DM`;
       const thread = await threadStore.create(this.resolveOwnerUserId(), title);
       binding = await bindingStore.bind(connectorId, externalChatId, thread.id, this.resolveOwnerUserId());
+      socketManager?.emitToUser?.(this.resolveOwnerUserId(), 'thread_created', {
+        threadId: thread.id,
+        source: 'connector_auto',
+      });
       log.info(
         { connectorId, externalChatId, threadId: thread.id },
         '[ConnectorRouter] New thread created for external chat',
@@ -313,6 +323,7 @@ export class ConnectorRouter {
     const mentionPatterns = this.getMentionPatterns();
     const { targetCatId } = parseMentions(resolvedText, mentionPatterns, this.opts.defaultCatId);
 
+    const messageTimestamp = Date.now();
     const stored = await messageStore.append({
       threadId: binding.threadId,
       userId: this.resolveOwnerUserId(),
@@ -320,15 +331,19 @@ export class ConnectorRouter {
       content: resolvedText,
       source,
       mentions: [targetCatId],
-      timestamp: Date.now(),
+      timestamp: messageTimestamp,
     });
 
     // 4. Broadcast to WebSocket
     socketManager?.broadcastToRoom(`thread:${binding.threadId}`, 'connector_message', {
       threadId: binding.threadId,
-      messageId: stored.id,
-      connectorId,
-      content: resolvedText,
+      message: {
+        id: stored.id,
+        type: 'connector',
+        content: resolvedText,
+        source,
+        timestamp: messageTimestamp,
+      },
     });
 
     // 5. Trigger cat invocation (use parsed targetCatId)
@@ -464,6 +479,8 @@ export class ConnectorRouter {
     const { messageStore, socketManager } = this.opts;
     const def = getConnectorDefinition(connectorId);
     const now = Date.now();
+    const commandTimestamp = now;
+    const responseTimestamp = now + 1;
 
     // Store inbound command
     const cmdMsg = await messageStore.append({
@@ -473,7 +490,7 @@ export class ConnectorRouter {
       content: commandText,
       source: { connector: connectorId, label: def?.displayName ?? connectorId, icon: def?.icon ?? 'message' },
       mentions: [],
-      timestamp: now,
+      timestamp: commandTimestamp,
     });
 
     // Store outbound system response
@@ -484,21 +501,29 @@ export class ConnectorRouter {
       content: responseText,
       source: { connector: 'system-command', label: 'Clowder AI', icon: 'settings' },
       mentions: [],
-      timestamp: now + 1,
+      timestamp: responseTimestamp,
     });
 
     // Broadcast both
     socketManager?.broadcastToRoom(`thread:${threadId}`, 'connector_message', {
       threadId,
-      messageId: cmdMsg.id,
-      connectorId,
-      content: commandText,
+      message: {
+        id: cmdMsg.id,
+        type: 'connector',
+        content: commandText,
+        source: { connector: connectorId, label: def?.displayName ?? connectorId, icon: def?.icon ?? 'message' },
+        timestamp: commandTimestamp,
+      },
     });
     socketManager?.broadcastToRoom(`thread:${threadId}`, 'connector_message', {
       threadId,
-      messageId: resMsg.id,
-      connectorId: 'system-command',
-      content: responseText,
+      message: {
+        id: resMsg.id,
+        type: 'connector',
+        content: responseText,
+        source: { connector: 'system-command', label: 'Clowder AI', icon: 'settings' },
+        timestamp: responseTimestamp,
+      },
     });
 
     // G+: Update lastCommandAt on the Hub thread for audit visibility

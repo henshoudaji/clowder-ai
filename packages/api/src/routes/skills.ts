@@ -4,19 +4,28 @@
  * GET  /api/skills/search   — 搜索 SkillHub 远程 skill
  * GET  /api/skills/trending — 获取热门 skill
  * GET  /api/skills/preview  — 预览远程 skill SKILL.md 内容
+ * GET  /api/skills/detail   — 获取已安装 skill 详情（含目录树）
+ * GET  /api/skills/file     — 预览 skill 目录中的文本文件
  * POST /api/skills/install  — 安装远程 skill
  * POST /api/skills/uninstall — 卸载远程 skill
  */
 
 import { existsSync } from 'node:fs';
-import { lstat, mkdir, readFile, readlink, realpath, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, readlink, realpath, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyPluginAsync } from 'fastify';
 import { parse as parseYaml } from 'yaml';
+import { readCapabilitiesConfig } from '../config/capabilities/capability-orchestrator.js';
 import { parseSkillFrontmatter } from '../domains/cats/services/skillhub/frontmatter-parser.js';
 import { loadInstalledRegistry } from '../domains/cats/services/skillhub/InstalledSkillRegistry.js';
-import { fetchSkillContent, searchSkills, trendingSkills } from '../domains/cats/services/skillhub/SkillHubService.js';
+import {
+  fetchSkillContent,
+  getSkillCategories,
+  listAllSkills,
+  searchSkills,
+  trendingSkills,
+} from '../domains/cats/services/skillhub/SkillHubService.js';
 import {
   getInstalledRecords,
   installSkill,
@@ -52,6 +61,85 @@ interface SkillsResponse {
   skills: SkillEntry[];
   summary: SkillsSummary;
 }
+
+// ─── Skill Detail Types ──────────────────────────────────
+
+interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  children?: FileTreeNode[];
+}
+
+interface SkillDetailResponse {
+  id: string;
+  name: string;
+  description?: string;
+  triggers?: string[];
+  category?: string;
+  source: 'cat-cafe' | 'external';
+  enabled: boolean;
+  installedAt?: string;
+  skillhubUrl?: string;
+  owner?: string;
+  repo?: string;
+  remoteSkillName?: string;
+  mounts?: SkillMount;
+  fileTree?: FileTreeNode[];
+  cats: Record<string, boolean>;
+}
+
+interface SkillFileResponse {
+  path: string;
+  content: string;
+  size: number;
+  mime: string;
+  truncated: boolean;
+}
+
+// MIME type mapping for text file preview
+const MIME_MAP: Record<string, string> = {
+  '.ts': 'text/typescript',
+  '.tsx': 'text/tsx',
+  '.js': 'text/javascript',
+  '.jsx': 'text/jsx',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+  '.css': 'text/css',
+  '.html': 'text/html',
+  '.svg': 'image/svg+xml',
+  '.yaml': 'text/yaml',
+  '.yml': 'text/yaml',
+  '.toml': 'text/toml',
+  '.sh': 'text/x-shellscript',
+  '.py': 'text/x-python',
+  '.txt': 'text/plain',
+};
+
+// Supported text MIME types for preview
+const TEXT_MIME_TYPES = new Set([
+  'text/plain',
+  'text/markdown',
+  'text/typescript',
+  'text/tsx',
+  'text/javascript',
+  'text/jsx',
+  'application/json',
+  'text/yaml',
+  'text/css',
+  'text/html',
+  'image/svg+xml',
+  'text/x-shellscript',
+  'text/x-python',
+]);
+
+function guessMime(filepath: string): string {
+  return MIME_MAP[extname(filepath)] ?? 'text/plain';
+}
+
+// Max file size for preview (1MB)
+const MAX_PREVIEW_SIZE = 1024 * 1024;
 
 function resolveCatCafeSkillsSourceDir(): string {
   return resolve(resolveCatCafeHostRoot(process.cwd()), 'cat-cafe-skills');
@@ -162,6 +250,62 @@ async function getBootstrapNames(skillsSrcDir: string): Promise<Set<string>> {
   return new Set((await parseBootstrap(join(skillsSrcDir, 'BOOTSTRAP.md'))).keys());
 }
 
+// ─── File Tree Builder ───────────────────────────────────
+
+const SKIP_FILES = new Set(['.git', '.DS_Store', 'Thumbs.db', 'node_modules', '.next', 'dist']);
+
+async function buildSkillFileTree(skillDir: string, maxDepth: number = 3): Promise<FileTreeNode[]> {
+  async function scanDir(dirPath: string, depth: number): Promise<FileTreeNode[]> {
+    if (depth >= maxDepth) return [];
+
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      const nodes: FileTreeNode[] = [];
+
+      // Sort: directories first, then files, alphabetically within each group
+      const sorted = entries.sort((a, b) => {
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      for (const entry of sorted) {
+        // Skip hidden files and system files
+        if (entry.name.startsWith('.') || SKIP_FILES.has(entry.name)) {
+          continue;
+        }
+
+        const fullPath = join(dirPath, entry.name);
+        const relPath = relative(skillDir, fullPath);
+
+        if (entry.isDirectory()) {
+          const children = await scanDir(fullPath, depth + 1);
+          nodes.push({
+            name: entry.name,
+            path: relPath,
+            type: 'directory',
+            children: children.length > 0 ? children : undefined,
+          });
+        } else {
+          const fileStat = await stat(fullPath);
+          nodes.push({
+            name: entry.name,
+            path: relPath,
+            type: 'file',
+            size: fileStat.size,
+          });
+        }
+      }
+
+      return nodes;
+    } catch {
+      return [];
+    }
+  }
+
+  return scanDir(skillDir, 0);
+}
+
 export const skillsRoutes: FastifyPluginAsync = async (app) => {
   // ────────────────────────────────────────────────────────
   // GET /api/skills
@@ -213,7 +357,7 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
         if (isRemote) {
           const frontmatter = await parseSkillFrontmatter(join(CAT_CAFE_SKILLS_SRC, name));
           trigger = frontmatter.triggers?.join('、') ?? '';
-          category = 'SkillHub';
+          category = 'Skill 扩展';
           source = 'skillhub';
           skillhubUrl = installedRecordMap.get(name)?.skillhubUrl;
         } else {
@@ -259,17 +403,18 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
       return { error: 'Identity required' };
     }
 
-    const query = (request.query as { q?: string }).q;
+    const query = (request.query as { keyword?: string }).keyword;
     if (!query) {
       reply.status(400);
-      return { error: 'Missing required query parameter: q' };
+      return { error: 'Missing required query parameter: keyword' };
     }
 
     const page = Number((request.query as { page?: string }).page) || 1;
     const limit = Number((request.query as { limit?: string }).limit) || 20;
+    const category = (request.query as { category?: string }).category;
 
     try {
-      const result = await searchSkills(query, { page, limit });
+      const result = await searchSkills(query, { page, limit, category });
       const installedNames = new Set((await getInstalledRecords(CAT_CAFE_ROOT)).map((r) => r.name));
       return {
         skills: result.data.map((s) => ({ ...s, isInstalled: installedNames.has(s.slug) })),
@@ -302,6 +447,57 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
         page: result.page,
         hasMore: result.hasMore,
       };
+    } catch (err) {
+      reply.status(502);
+      return { error: `SkillHub unavailable: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  });
+
+  // ────────────────────────────────────────────────────────
+  // GET /api/skills/all — 获取全部技能（分页）
+  // ────────────────────────────────────────────────────────
+  app.get('/api/skills/all', async (request, reply) => {
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    const q = request.query as { page?: string; limit?: string; category?: string };
+    const page = parseInt(q.page ?? '1', 10);
+    const limit = parseInt(q.limit ?? '24', 10);
+    const category = q.category;
+
+    try {
+      const result = await listAllSkills({ page, limit, category });
+      const installed = await getInstalledRecords(CAT_CAFE_ROOT);
+      const installedNames = new Set(installed.map((r) => r.name));
+
+      return {
+        skills: result.data.map((s) => ({ ...s, isInstalled: installedNames.has(s.slug) })),
+        total: result.total,
+        page: result.page,
+        hasMore: result.hasMore,
+      };
+    } catch (err) {
+      reply.status(502);
+      return { error: `SkillHub unavailable: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  });
+
+  // ────────────────────────────────────────────────────────
+  // GET /api/skills/categories — 获取技能分类列表
+  // ────────────────────────────────────────────────────────
+  app.get('/api/skills/categories', async (request, reply) => {
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    try {
+      const categories = await getSkillCategories();
+      return { categories };
     } catch (err) {
       reply.status(502);
       return { error: `SkillHub unavailable: ${err instanceof Error ? err.message : String(err)}` };
@@ -407,6 +603,217 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
       }
       reply.status(500);
       return { success: false, error: String(err) };
+    }
+  });
+
+  // ────────────────────────────────────────────────────────
+  // GET /api/skills/detail — 获取已安装 skill 详情
+  // ────────────────────────────────────────────────────────
+  app.get('/api/skills/detail', async (request, reply) => {
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    const q = request.query as { name?: string };
+    if (!q.name) {
+      reply.status(400);
+      return { error: 'Missing required parameter: name' };
+    }
+
+    const skillName = q.name.trim();
+
+    // Security: prevent path traversal
+    if (!skillName || /[\\/]|(\.\.)/.test(skillName)) {
+      reply.status(400);
+      return { error: 'Invalid skill name' };
+    }
+
+    const skillDir = join(CAT_CAFE_SKILLS_SRC, skillName);
+    const skillDirExists = existsSync(skillDir);
+
+    // For cat-cafe skills, require SKILL.md to exist
+    // For external skills (from capabilities.json), allow missing files
+    if (skillDirExists && !existsSync(join(skillDir, 'SKILL.md'))) {
+      // Directory exists but no SKILL.md - still allow for external skills
+      // We'll check capabilities.json later to determine if it's a valid skill
+    }
+
+    try {
+      // Parallel fetch all data sources
+      const [bootstrapEntries, manifestMeta, installedRecords, fileTree, capabilitiesConfig] = await Promise.all([
+        parseBootstrap(join(CAT_CAFE_SKILLS_SRC, 'BOOTSTRAP.md')),
+        parseManifestSkillMeta(CAT_CAFE_SKILLS_SRC),
+        getInstalledRecords(CAT_CAFE_ROOT),
+        skillDirExists ? buildSkillFileTree(skillDir) : Promise.resolve([]),
+        readCapabilitiesConfig(CAT_CAFE_ROOT),
+      ]);
+
+      // Check if skill exists in capabilities.json
+      const capabilityEntry = capabilitiesConfig?.capabilities.find((c) => c.id === skillName && c.type === 'skill');
+
+      // If skill directory doesn't exist and not in capabilities, return 404
+      if (!skillDirExists && !capabilityEntry) {
+        reply.status(404);
+        return { error: `Skill "${skillName}" not found` };
+      }
+
+      // Determine source: check capabilities.json first, then installed records
+      // Only treat as external if from SkillHub (source === 'skillhub'), not local uploads
+      const isExternalCap = capabilityEntry?.source === 'external';
+      const installedRecord = installedRecords.find((r) => r.name === skillName);
+      const isSkillhubInstalled = installedRecord?.source === 'skillhub';
+      const isRemote = isSkillhubInstalled || isExternalCap;
+      const source: 'cat-cafe' | 'external' = isRemote ? 'external' : 'cat-cafe';
+
+      // Get category
+      const bootstrapEntry = bootstrapEntries.get(skillName);
+      const category = isRemote ? 'Skill 扩展' : (bootstrapEntry?.category ?? '其他');
+
+      // Get description and triggers from manifest or frontmatter (only if directory exists)
+      let meta = manifestMeta.get(skillName);
+      if (!meta && skillDirExists) {
+        const frontmatter = await parseSkillFrontmatter(skillDir);
+        if (frontmatter.description || frontmatter.triggers?.length) {
+          meta = {
+            description: frontmatter.description,
+            triggers: frontmatter.triggers,
+          };
+        }
+      }
+
+      // Check mount status (symlinks)
+      const home = homedir();
+      const expectedTarget = join(CAT_CAFE_SKILLS_SRC, skillName);
+      const [claude, codex, gemini] = await Promise.all([
+        isCorrectSymlink(join(home, '.claude', 'skills', skillName), expectedTarget),
+        isCorrectSymlink(join(home, '.codex', 'skills', skillName), expectedTarget),
+        isCorrectSymlink(join(home, '.gemini', 'skills', skillName), expectedTarget),
+      ]);
+
+      // Build response
+      const response: SkillDetailResponse = {
+        id: skillName,
+        name: skillName,
+        source,
+        enabled: capabilityEntry?.enabled ?? true,
+        category,
+        cats: {},
+        fileTree,
+      };
+
+      if (meta?.description) response.description = meta.description;
+      if (meta?.triggers?.length) response.triggers = meta.triggers;
+
+      // Remote skill extra info
+      if (isRemote) {
+        if (installedRecord) {
+          response.installedAt = installedRecord.installedAt;
+          response.skillhubUrl = installedRecord.skillhubUrl;
+          response.owner = installedRecord.owner;
+          response.repo = installedRecord.repo;
+          response.remoteSkillName = installedRecord.remoteSkillName;
+        }
+      }
+
+      // Mount status (for all skills)
+      response.mounts = { claude, codex, gemini };
+
+      return response;
+    } catch (err) {
+      reply.status(500);
+      return { error: `Failed to get skill detail: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  });
+
+  // ────────────────────────────────────────────────────────
+  // GET /api/skills/file — 预览 skill 目录中的文本文件
+  // ────────────────────────────────────────────────────────
+  app.get('/api/skills/file', async (request, reply) => {
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    const q = request.query as { name?: string; path?: string };
+    if (!q.name || !q.path) {
+      reply.status(400);
+      return { error: 'Missing required parameters: name, path' };
+    }
+
+    const skillName = q.name.trim();
+    const filePath = q.path.trim();
+
+    // Security: prevent path traversal
+    if (!skillName || /[\\/]|(\.\.)/.test(skillName)) {
+      reply.status(400);
+      return { error: 'Invalid skill name' };
+    }
+    if (filePath.includes('..') || filePath.startsWith('/')) {
+      reply.status(400);
+      return { error: 'Invalid file path' };
+    }
+
+    // Security: prevent reading hidden files (consistent with directory tree behavior)
+    const fileName = filePath.split(/[/\\]/).pop() ?? '';
+    if (fileName.startsWith('.')) {
+      reply.status(403);
+      return { error: 'Cannot read hidden files' };
+    }
+
+    const skillDir = join(CAT_CAFE_SKILLS_SRC, skillName);
+    const fullPath = join(skillDir, filePath);
+
+    // Security: ensure path is within skill directory
+    const resolvedPath = resolve(fullPath);
+    const resolvedSkillDir = resolve(skillDir);
+    if (!resolvedPath.startsWith(resolvedSkillDir + sep) && resolvedPath !== resolvedSkillDir) {
+      reply.status(403);
+      return { error: 'Path traversal detected' };
+    }
+
+    // Check if skill exists
+    if (!existsSync(skillDir)) {
+      reply.status(404);
+      return { error: `Skill "${skillName}" not found` };
+    }
+
+    try {
+      const fileStat = await stat(resolvedPath);
+      if (fileStat.isDirectory()) {
+        reply.status(400);
+        return { error: 'Path is a directory' };
+      }
+
+      const mime = guessMime(resolvedPath);
+
+      // Check if text file
+      if (!TEXT_MIME_TYPES.has(mime) && !mime.startsWith('text/')) {
+        reply.status(415);
+        return { error: 'File type not supported for preview. Only text files are supported.' };
+      }
+
+      // Read file with size limit
+      const truncated = fileStat.size > MAX_PREVIEW_SIZE;
+      const content = await readFile(resolvedPath, 'utf-8');
+      const displayContent = truncated ? content.slice(0, MAX_PREVIEW_SIZE) : content;
+
+      return {
+        path: filePath,
+        content: displayContent,
+        size: fileStat.size,
+        mime,
+        truncated,
+      } satisfies SkillFileResponse;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+        reply.status(404);
+        return { error: 'File not found' };
+      }
+      reply.status(500);
+      return { error: 'Internal error' };
     }
   });
 

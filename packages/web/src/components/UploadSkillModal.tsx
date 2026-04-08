@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/utils/api-client';
+import { AgentManagementIcon } from './AgentManagementIcon';
 
 interface UploadFile {
   path: string;
@@ -12,6 +13,10 @@ interface UploadSkillModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+function CloseIcon() {
+  return <AgentManagementIcon name="close" className="h-4 w-4" />;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -49,6 +54,18 @@ export function UploadSkillModal({ open, onClose, onSuccess }: UploadSkillModalP
     reset();
     onClose();
   }, [reset, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, handleClose]);
 
   const readFiles = useCallback(async (fileList: FileList) => {
     const newEntries: UploadFile[] = [];
@@ -101,7 +118,7 @@ export function UploadSkillModal({ open, onClose, onSuccess }: UploadSkillModalP
 
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) {
-      setError('请输入 Skill 名称');
+      setError('请输入技能名称');
       return;
     }
     if (files.length === 0) {
@@ -138,19 +155,29 @@ export function UploadSkillModal({ open, onClose, onSuccess }: UploadSkillModalP
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={handleClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-bold mb-5">上传 Skill</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" data-testid="upload-skill-overlay">
+      <div role="dialog" aria-modal="true" className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className="text-sm font-bold">导入技能</h3>
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="close"
+            className="flex h-6 w-6 items-center justify-center rounded text-[#5F6775] transition-colors hover:bg-[#F7F8FA]"
+          >
+            <CloseIcon />
+          </button>
+        </div>
 
         {/* Name input */}
         <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Skill 名称</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">技能名称</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="my-custom-skill"
-            className="w-full text-xs px-3 py-2 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-300"
+            className="ui-input w-full text-xs px-3 py-2 rounded"
           />
         </div>
 
@@ -243,7 +270,7 @@ export function UploadSkillModal({ open, onClose, onSuccess }: UploadSkillModalP
           <button
             type="button"
             onClick={handleClose}
-            className="ui-button-secondary"
+            className="ui-button-default ui-modal-action-button"
           >
             取消
           </button>
@@ -251,7 +278,7 @@ export function UploadSkillModal({ open, onClose, onSuccess }: UploadSkillModalP
             type="button"
             onClick={handleSubmit}
             disabled={uploading || !name.trim() || files.length === 0}
-            className="ui-button-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ui-button-primary ui-modal-action-button disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploading ? '上传中...' : '上传'}
           </button>

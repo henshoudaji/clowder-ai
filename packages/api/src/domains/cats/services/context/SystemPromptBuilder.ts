@@ -62,7 +62,7 @@ export interface InvocationContext {
   /**
    * F073 P4: SOP stage hint from Mission Hub workflow-sop.
    * Injected per-invocation so all cats (Claude/Codex/Gemini) see current stage.
-   * 告示牌哲学：猫看了自己决定行动，不被系统推着走。
+   * 告示牌哲学：agent 看了自己决定行动，不被系统推着走。
    */
   sopStageHint?: {
     readonly stage: string;
@@ -71,7 +71,7 @@ export interface InvocationContext {
   };
   /**
    * F091: Active Signal articles in discussion context.
-   * Injected when 铲屎官 links a Signal article in the thread.
+   * Injected when user links a Signal article in the thread.
    */
   activeSignals?: readonly {
     readonly id: string;
@@ -209,9 +209,9 @@ MCP 工具用于异步汇报等场景（token 有效期有限）：
 - cat_cafe_post_message / cat_cafe_register_pr_tracking / cat_cafe_get_pending_mentions / cat_cafe_get_thread_context / cat_cafe_list_threads / cat_cafe_update_task：异步协作
 - cat_cafe_create_rich_block / cat_cafe_get_rich_block_rules：富消息
 - cat_cafe_generate_document：生成报告/导出文档/发 PDF 时用；不要手动 pandoc + create_rich_block
-- cat_cafe_multi_mention：并行拉 1-3 只猫（先搜后问，需 searchEvidenceRefs 或 overrideReason）
+- cat_cafe_multi_mention：并行拉 1-3 个 agent（先搜后问，需 searchEvidenceRefs 或 overrideReason）
 
-**共享 Skills：**cat_cafe_list_skills/cat_cafe_load_skill。计划/TDD/对比/worktree：先 list+load，再 search/grep/read；plan→writing-plans，失败测试→tdd，对比→collaborative-thinking；空结果试短词或skill名
+**共享 Skills：**cat_cafe_list_skills/cat_cafe_load_skill。先 list+load，再 search/grep/read；对比→collaborative-thinking；空结果试短词或skill名
 
 ${RICH_BLOCK_SHORT}
 When the user asks to say/show/present something richly, consider rich blocks (audio/card/gallery/checklist/diff); call get_rich_block_rules before first use in a session.
@@ -224,55 +224,23 @@ When the user asks to say/show/present something richly, consider rich blocks (a
  * Design decision: inject compact L0 digest, not full text. See F086 spec.
  */
 const GOVERNANCE_L0_DIGEST = `## 家规（shared-rules.md）
-原则：P1每步产物是终态基座不是脚手架 P2自主跑完SOP不每步问铲屎官（SOP写了下一步→直接做，不问；方向不确定/阻塞→才升级） P3方向正确>速度 P4每个概念只在一处定义 P5可验证才算完成
-世界观：W1猫是Agent不是API W2共享才成团队 W3用户是CVO W4不随地大小便（文件放对目录） W5只回流方法论不回流数据 W6教训追到根因
-纪律：不冒充其他猫 | 实事求是——结论基于多源证据（代码+commit+PR+文档），顺藤摸瓜查完再下判断，不够就说"还没查完" | @是路由指令——发前问"到我这里结束了吗？" | runtime禁止擅自重启 | 团队用"我们"不用"你们" | BACKLOG等共享状态只在main改，改完立刻commit push | 跨thread阻塞依赖必须双写到可追溯状态（feature doc/workflow/task），消息不是真相源 | commit必须带签名[昵称/模型🐾]（如[宪宪/Opus-46🐾]），不带模型型号=无法区分是谁干的
+原则：P1每步产物是终态基座不是脚手架 P2自主跑完SOP不每步问用户（SOP写了下一步→直接做，不问；方向不确定/阻塞→才升级） P3方向正确>速度 P4每个概念只在一处定义 P5可验证才算完成
+世界观：W1 Agent不是API W2共享才成团队 W3用户是CVO W4文件放对目录 W5只回流方法论不回流数据 W6教训追到根因
+纪律：不冒充其他 agent | 实事求是——结论基于多源证据（代码+commit+PR+文档），顺藤摸瓜查完再下判断，不够就说"还没查完" | @是路由指令——发前问"到我这里结束了吗？" | runtime禁止擅自重启 | 团队用"我们"不用"你们" | BACKLOG等共享状态只在main改，改完立刻commit push | 跨thread阻塞依赖必须双写到可追溯状态（feature doc/workflow/task），消息不是真相源 | commit必须带签名[名称/模型]（如[小九/GPT-54]），不带模型型号=无法区分是谁干的
 质量覆盖（对冲CLI"先简单后复杂"——方向错误的加速=浪费）：
 - Bug先定位根因再修，禁止猜测修补。复现→日志→调用链→根因→动手
 - 不确定方向：停→搜→问→确认→再动手，禁止"先做了再说"
 - "完成"附证据（测试/截图/日志）。Bug先红后绿
 - scope失控→记录；同类错误→提案；有价值经验→Episode→蒸馏→Eval（self-evolution+五级阶梯）
-Magic Words（铲屎官对你说以下词=手动拉闸，仅铲屎官当前指令触发，引用/复述/讨论历史不触发）：
+Magic Words（用户对你说以下词=手动拉闸，仅用户当前指令触发，引用/复述/讨论历史不触发）：
 -「脚手架」= 你在偷懒写临时方案 → 停，审视产物是否终态，不是→重写
 -「绕路了」= 局部最优但全局绕路 → 停，画出直线路径，丢掉绕路部分
--「喵约」= 你忘了我们的约定 → 重读本段家规，逐条对照当前行为
--「星星罐子」= P0不可逆风险 → 立刻停止新增副作用（不发新命令、不写新文件、不push），等铲屎官指示`;
+-「公约」= 你忘了我们的约定 → 重读本段家规，逐条对照当前行为
+-「星星罐子」= P0不可逆风险 → 立刻停止新增副作用（不发新命令、不写新文件、不push），等用户指示`;
 
-/** Per-breed workflow triggers: when to proactively @ other cats.
- *  Keyed by breedId so all variants of a breed share the same workflow. */
-const WORKFLOW_TRIGGERS: Record<string, string> = {
-  ragdoll: [
-    '## 工作流（主动 @ 触发点）',
-    '- 完成开发/修复 → @缅因猫 请 review',
-    '- 修完 review 意见 → @缅因猫 确认修复',
-    '- 遇到视觉/体验问题 → @暹罗猫 征询',
-    '- Review 别人代码：每个发现必须有明确立场，禁止说"修不修都行"',
-  ].join('\n'),
-  'maine-coon': [
-    '## 工作流（主动 @ 触发点）',
-    '- 完成 review → @布偶猫 通知结果',
-    '- 修完 bug/feature → @布偶猫 请 review',
-    '- 讨论/独立思考完成，结论需要其他猫跟进 → @ 对应猫',
-    '- 发现需要架构决策 → @布偶猫 征询',
-    '- Review 布偶猫代码：每个发现必须有明确立场，禁止说"修不修都行"',
-    '- 收到 review 意见：独立判断，认为自己对就 push back，不全盘接受',
-    '',
-    '### 执行纪律',
-    '- 加载 Skill 后直接执行第一步，不要复述流程',
-    '- 接球后默认静默执行：收到"放行"后沉默做到下一状态迁移点（BLOCKED / REVIEW READY / DONE）',
-    '- 声明 ≠ 执行：说"我进 merge gate"必须同 turn 加载 skill 并执行，只发消息不调工具 = 空气传球',
-    '- 禁止中途进展汇报、禁止说"你别回我了"',
-    '- 完成任务后必须 @ 下一棒',
-    '',
-    '### 出口一问（发消息前必问）',
-    '我这条消息结尾有没有 @ 下一棒？没有 → 是真的不需要，还是我忘了？',
-  ].join('\n'),
-  siamese: [
-    '## 工作流（主动 @ 触发点）',
-    '- 完成设计/视觉资产 → 分别 @布偶猫 和 @缅因猫 请确认（每只猫各占一行）',
-    '- 遇到技术实现问题 → @布偶猫 征询',
-  ].join('\n'),
-};
+// WORKFLOW_TRIGGERS removed: per-breed workflow triggers were hardcoded for
+// ragdoll/maine-coon/siamese and referenced deleted skills (PR #218).
+// Workflow routing is now handled dynamically via cat-config.json roster.
 
 /**
  * F-Ground-3: Build teammate roster table.
@@ -297,7 +265,7 @@ function buildTeammateRoster(currentCatId: CatId): string | null {
     rows.push(`| ${label} | ${mention} | ${strengths} | ${caution} |`);
   }
 
-  return ['## 队友名册', '| 猫猫 | @mention | 擅长 | 注意 |', '|------|---------|------|------|', ...rows].join('\n');
+  return ['## 队友名册', '| Agent | @mention | 擅长 | 注意 |', '|------|---------|------|------|', ...rows].join('\n');
 }
 
 /**
@@ -321,7 +289,7 @@ export interface StaticIdentityOptions {
 /**
  * Build static identity prompt — persistent across invocations.
  * Includes: identity, personality, rules, A2A format, workflow triggers,
- * 铲屎官 reference, and MCP tool documentation (session-level).
+ * user reference, and MCP tool documentation (session-level).
  * Suitable for --system-prompt / --append-system-prompt injection.
  */
 export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOptions): string {
@@ -336,8 +304,7 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
     ? `${config.displayName}/${config.nickname}（${config.name}）`
     : `${config.displayName}（${config.name}）`;
   lines.push(
-    `你是 ${nameLabel}，由 ${providerLabel} 提供的 AI 猫猫。`,
-    ...(config.nickname ? [`昵称 "${config.nickname}" 的由来见 docs/stories/cat-names/。`] : []),
+    `你是 ${nameLabel}，由 ${providerLabel} 提供的 AI assistant。`,
     `角色：${config.roleDescription}`,
     `性格：${config.personality}`,
     '',
@@ -354,7 +321,7 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
       lines.push(`同族多分身时：默认 \`@显示名\`，其它用**唯一句柄**（例如 \`${example}\`）。`);
       lines.push(`同名队友并存时，请优先使用唯一句柄（例如 \`${example}\`）避免歧义。`);
     }
-    lines.push('格式：另起一行行首写 @猫名（行中无效，多猫各占一行），上文或下文写请求均可。');
+    lines.push('格式：另起一行行首写 @名称（行中无效，多名称各占一行），上文或下文写请求均可。');
     lines.push(`[正确] ${exampleTarget}\\n请帮忙  [正确] 内容...\\n${exampleTarget}  [错误] 行中 ${exampleTarget}`);
     lines.push('');
   }
@@ -365,19 +332,13 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
     lines.push(rosterLines, '');
   }
 
-  // Per-breed workflow triggers (fallback to catId for legacy configs without breedId)
-  const triggers = WORKFLOW_TRIGGERS[config.breedId ?? ''] ?? WORKFLOW_TRIGGERS[catId as string];
-  if (triggers) {
-    lines.push(triggers, '');
-  }
-
-  // 铲屎官 reference (session-level, not per-message)
+  // 用户 reference (session-level, not per-message)
   // F067: Use co-creator config for name + mention handles
   // Note: "不冒充/不编造/身份契约" folded into GOVERNANCE_L0_DIGEST
   const coCreator = getCoCreatorConfig();
   const ccName = coCreator.name;
   const ccHandles = coCreator.mentionPatterns.map((p) => `\`${p}\``).join(' / ');
-  lines.push(`${ccName}（铲屎官/CVO）。重要决策由${ccName}拍板。需要关注时行首写 ${ccHandles}。`, '');
+  lines.push(`${ccName}（用户/CVO）。重要决策由${ccName}拍板。需要关注时行首写 ${ccHandles}。`, '');
 
   // L0 Governance Digest — always-on principles from shared-rules.md (F086 post-completion fix)
   // Source of truth: cat-cafe-skills/refs/shared-rules.md
@@ -396,7 +357,7 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
 /**
  * Build dynamic invocation context — changes per call.
  * Includes: teammates, mode, chain position, prompt tags.
- * (MCP tools and 铲屎官 reference moved to buildStaticIdentity for session-level injection.)
+ * (MCP tools and user reference moved to buildStaticIdentity for session-level injection.)
  */
 export function buildInvocationContext(context: InvocationContext): string {
   const config = getConfig(context.catId as string);
@@ -436,7 +397,7 @@ export function buildInvocationContext(context: InvocationContext): string {
   }
   // Mode context
   if (context.mode === 'serial' && context.chainIndex != null && context.chainTotal != null) {
-    lines.push(`当前模式：你是第 ${context.chainIndex}/${context.chainTotal} 只被召唤的猫，请注意前面猫的回复。`, '');
+    lines.push(`当前模式：你是第 ${context.chainIndex}/${context.chainTotal} 个被调用的 agent，请注意前面 agent 的回复。`, '');
   } else if (context.mode === 'parallel') {
     lines.push('当前模式：独立思考。你和队友各自独立回答同一问题，给出你自己的观点。', '');
   } else {
@@ -523,9 +484,9 @@ export function buildInvocationContext(context: InvocationContext): string {
   // F092: Voice companion mode — instruct cats to prioritize audio output
   if (context.voiceMode) {
     lines.push(
-      'Voice Mode ON: 铲屎官正在语音陪伴模式（AirPods，双手不空）。',
+      'Voice Mode ON: 用户正在语音陪伴模式（AirPods，双手不空）。',
       '- 每条回复用 audio rich block 发语音（call get_rich_block_rules if unsure）',
-      '- 文字是给日志看的，语音才是给铲屎官耳朵的输出',
+      '- 文字是给日志看的，语音才是给用户耳朵的输出',
       '- 代码/表格/长内容仍用文字，但加一段语音摘要',
       '',
     );
@@ -533,13 +494,13 @@ export function buildInvocationContext(context: InvocationContext): string {
     lines.push('Voice Mode OFF: 不要发 audio rich block。用文字回复即可。', '');
   }
 
-  // F087: Bootcamp mode — inject phase context so cats know to guide the new CVO
+  // F087: Bootcamp mode — inject phase context for onboarding threads
   if (context.bootcampState) {
     const { phase, leadCat, selectedTaskId } = context.bootcampState;
     const threadPart = context.threadId ? ` thread=${context.threadId}` : '';
     lines.push(
       `Bootcamp Mode:${threadPart} phase=${phase}${leadCat ? ` leadCat=${leadCat}` : ''}${selectedTaskId ? ` task=${selectedTaskId}` : ''}`,
-      '→ Load bootcamp-guide skill and act per current phase.',
+      '→ Act per current bootcamp phase.',
       '',
     );
   }
@@ -620,7 +581,7 @@ export function buildReviewerSection(catId: CatId): string | null {
         sameFamily.push(line);
       }
     } else {
-      unavailable.push(`- ${mention} (${displayName}, 没猫粮)`);
+      unavailable.push(`- ${mention} (${displayName}, 不可用)`);
     }
   }
 
@@ -635,7 +596,7 @@ export function buildReviewerSection(catId: CatId): string | null {
     } else if (sameFamily.length > 0) {
       // Cloud Codex R5 P2 fix: No cross-family, but same-family available as fallback
       available = sameFamily;
-      fallbackNote = '[注意] 没有跨家族 reviewer 可用，以下同家族猫可作为 fallback：';
+      fallbackNote = '[注意] 没有跨家族 reviewer 可用，以下同家族 agent 可作为 fallback：';
     } else {
       available = [];
     }
@@ -652,13 +613,13 @@ export function buildReviewerSection(catId: CatId): string | null {
     if (fallbackNote) {
       lines.push(fallbackNote);
     } else {
-      lines.push('根据 roster 配置，你当前可以找以下猫 review：');
+      lines.push('根据 roster 配置，你当前可以找以下 agent review：');
     }
     lines.push(...available);
     lines.push('');
   }
   if (unavailable.length > 0) {
-    lines.push('[注意] 以下猫当前不可用：');
+    lines.push('[注意] 以下 agent 当前不可用：');
     lines.push(...unavailable);
     lines.push('');
   }

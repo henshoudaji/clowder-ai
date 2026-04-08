@@ -48,7 +48,7 @@ function AddTermRow({ onAdd }: { onAdd: (from: string, to: string) => void }) {
         value={from}
         onChange={(e) => setFrom(e.target.value)}
         placeholder="误识别词"
-        className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-blue-400"
+        className="ui-input flex-1 text-xs rounded px-2 py-1.5"
         onKeyDown={handleFromKeyDown}
       />
       <span className="text-gray-400 text-xs">&rarr;</span>
@@ -58,7 +58,7 @@ function AddTermRow({ onAdd }: { onAdd: (from: string, to: string) => void }) {
         value={to}
         onChange={(e) => setTo(e.target.value)}
         placeholder="正确词"
-        className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-blue-400"
+        className="ui-input flex-1 text-xs rounded px-2 py-1.5"
         onKeyDown={handleKeyDown}
       />
       <button
@@ -115,7 +115,7 @@ function CustomTermRow({
           value={editFrom}
           onChange={(e) => setEditFrom(e.target.value)}
           onKeyDown={handleEditKeyDown}
-          className="flex-1 border border-blue-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-500"
+          className="ui-input flex-1 rounded px-1.5 py-0.5"
         />
         <span className="text-gray-400">&rarr;</span>
         <input
@@ -123,7 +123,7 @@ function CustomTermRow({
           value={editTo}
           onChange={(e) => setEditTo(e.target.value)}
           onKeyDown={handleEditKeyDown}
-          className="flex-1 border border-blue-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-500"
+          className="ui-input flex-1 rounded px-1.5 py-0.5"
         />
         <button
           onClick={saveEdit}
@@ -235,7 +235,7 @@ export function VoiceSettingsPanel() {
           onChange={(e) => setCustomPrompt(e.target.value || null)}
           placeholder="使用默认提示词"
           rows={3}
-          className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-blue-400 resize-vertical font-mono"
+          className="ui-textarea w-full text-xs rounded px-2 py-1.5 font-mono"
         />
       </Section>
 

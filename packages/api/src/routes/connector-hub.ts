@@ -14,6 +14,8 @@ export interface ConnectorHubRoutesOptions {
   weixinAdapter?: WeixinAdapter | null;
   /** Called after successful QR login to start the WeChat polling loop */
   startWeixinPolling?: () => void;
+  /** Persist + activate a newly acquired WeChat bot token */
+  activateWeixinBotToken?: (token: string) => Promise<void> | void;
   /** F134 Phase D: Permission store for group whitelist + admin management */
   permissionStore?: IConnectorPermissionStore | null;
 }
@@ -276,14 +278,17 @@ export const connectorHubRoutes: FastifyPluginAsync<ConnectorHubRoutesOptions> =
       const status = await WA.pollQrCodeStatus(qrPayload);
 
       if (status.status === 'confirmed') {
-        const adapter = opts.weixinAdapter;
-        if (!adapter) {
+        if (!opts.activateWeixinBotToken && !opts.weixinAdapter) {
           app.log.error('[WeChat QR] QR confirmed but adapter not available — token would be lost');
           reply.status(503);
           return { error: 'WeChat adapter not ready — please retry shortly' };
         }
-        adapter.setBotToken(status.botToken);
-        opts.startWeixinPolling?.();
+        if (opts.activateWeixinBotToken) {
+          await opts.activateWeixinBotToken(status.botToken);
+        } else {
+          opts.weixinAdapter?.setBotToken(status.botToken);
+          opts.startWeixinPolling?.();
+        }
         app.log.info('[WeChat QR] Auto-activated — bot_token set server-side, polling started');
         return { status: 'confirmed' };
       }

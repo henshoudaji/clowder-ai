@@ -92,7 +92,7 @@ export function CreateIntentCardForm({ projectId, onCreated, onCancel }: CreateI
           onChange={(e) => setOriginalText(e.target.value)}
           rows={3}
           placeholder="粘贴 PRD 原文片段..."
-          className="mt-1 w-full rounded-lg border border-[#D8C6AD] bg-white px-3 py-2 text-xs text-[#2B2118] focus:border-[#8B6F47] focus:outline-none"
+          className="ui-textarea ui-textarea-soft mt-1 w-full rounded-lg px-3 py-2 text-xs"
         />
       </label>
 
@@ -113,7 +113,7 @@ export function CreateIntentCardForm({ projectId, onCreated, onCancel }: CreateI
               value={f.value}
               onChange={(e) => f.set(e.target.value)}
               placeholder={f.ph}
-              className="mt-0.5 w-full rounded border border-[#D8C6AD] bg-white px-2 py-1 text-xs focus:border-[#8B6F47] focus:outline-none"
+              className="ui-input ui-input-soft mt-0.5 w-full rounded px-2 py-1 text-xs"
             />
           </label>
         ))}
@@ -158,7 +158,7 @@ export function CreateIntentCardForm({ projectId, onCreated, onCancel }: CreateI
             value={sourceDetail}
             onChange={(e) => setSourceDetail(e.target.value)}
             placeholder="PRD section 3.2"
-            className="mt-0.5 w-full rounded border border-[#D8C6AD] bg-white px-2 py-1 text-xs focus:border-[#8B6F47] focus:outline-none"
+            className="ui-input ui-input-soft mt-0.5 w-full rounded px-2 py-1 text-xs"
           />
         </label>
         <label className="block">
@@ -168,7 +168,7 @@ export function CreateIntentCardForm({ projectId, onCreated, onCancel }: CreateI
             value={decisionOwner}
             onChange={(e) => setDecisionOwner(e.target.value)}
             placeholder="Product Owner"
-            className="mt-0.5 w-full rounded border border-[#D8C6AD] bg-white px-2 py-1 text-xs focus:border-[#8B6F47] focus:outline-none"
+            className="ui-input ui-input-soft mt-0.5 w-full rounded px-2 py-1 text-xs"
           />
         </label>
       </div>

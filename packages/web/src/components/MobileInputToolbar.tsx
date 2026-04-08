@@ -1,4 +1,4 @@
-import { AttachIcon } from './icons/AttachIcon';
+﻿import { AttachIcon } from './icons/AttachIcon';
 
 interface MobileInputToolbarProps {
   onAttach: () => void;

@@ -13,12 +13,12 @@ test('embedded Agent Teams binding ignores legacy ACP profiles and accepts opena
     const legacyAcpProfile = await createProviderProfile(projectRoot, {
       kind: 'acp',
       displayName: 'Agent Teams Local',
-      command: 'agent-teams',
+      command: 'relay-teams',
       args: ['gateway', 'acp', 'stdio'],
       protocol: 'acp',
       authType: 'none',
       modelAccessMode: 'clowder_default_profile',
-      defaultModelProfileRef: 'agent-teams-default',
+      defaultModelProfileRef: 'relay-teams-default',
     });
 
     const openAiProfile = await createProviderProfile(projectRoot, {

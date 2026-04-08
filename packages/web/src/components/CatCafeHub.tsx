@@ -196,13 +196,12 @@ export function CatCafeHub() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={closeHub}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div
         ref={modalRef}
         tabIndex={-1}
         className="rounded-2xl shadow-xl max-w-4xl w-full mx-4 h-[85vh] flex flex-col outline-none"
         style={{ backgroundColor: '#FDF8F3' }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3" style={{ flexShrink: 0 }}>

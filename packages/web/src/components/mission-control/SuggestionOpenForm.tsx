@@ -75,7 +75,7 @@ export function SuggestionOpenForm({
         <textarea
           value={why}
           onChange={(event) => onWhyChange(event.target.value)}
-          className="mt-1 h-16 w-full rounded-lg border border-[#E6D7C3] px-2 py-1.5 text-xs text-[#2C241B]"
+          className="ui-textarea ui-textarea-soft mt-1 h-16 w-full rounded-lg px-2 py-1.5 text-xs"
           data-testid="mc-suggest-why"
         />
       </label>
@@ -84,7 +84,7 @@ export function SuggestionOpenForm({
         <textarea
           value={plan}
           onChange={(event) => onPlanChange(event.target.value)}
-          className="mt-1 h-16 w-full rounded-lg border border-[#E6D7C3] px-2 py-1.5 text-xs text-[#2C241B]"
+          className="ui-textarea ui-textarea-soft mt-1 h-16 w-full rounded-lg px-2 py-1.5 text-xs"
           data-testid="mc-suggest-plan"
         />
       </label>

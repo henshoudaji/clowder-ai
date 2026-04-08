@@ -15,7 +15,7 @@ updated: 2026-03-27
 Clowder 里的 ACP 接入分成三层：
 
 1. **ACP Provider Profile**
-   定义如何启动外部 ACP agent 进程，例如 `agent-teams gateway acp stdio` 或 `opencode acp`，并可选附带一组安全过滤后的环境变量。
+   定义如何启动外部 ACP agent 进程，例如 `relay-teams gateway acp stdio` 或 `opencode acp`，并可选附带一组安全过滤后的环境变量。
 2. **ACP Model Profile**
    仅在 `clowder_default_profile` 模式下使用，由 Clowder 把模型参数和密钥下发给 ACP agent。
 3. **Cat 绑定**
@@ -30,7 +30,7 @@ Clowder 里的 ACP 接入分成三层：
 - `mcpCapabilities.stdio`: Clowder 继续按 host-provided stdio MCP server 注入
 - `mcpCapabilities.acp`: Clowder 注入 `transport: "acp"` 的 `cat-cafe` server，并在运行期桥接 `mcp/connect`、`mcp/message`、`mcp/disconnect`
 
-对 `agent-teams` 这类显式声明 `mcpCapabilities.acp` 的 ACP agent，推荐把 host MCP 视为首选路径，而不是额外再配一份本地 MCP 配置文件。
+对 `relay-teams` 这类显式声明 `mcpCapabilities.acp` 的 ACP agent，推荐把 host MCP 视为首选路径，而不是额外再配一份本地 MCP 配置文件。
 
 中断恢复分两层：
 
@@ -71,7 +71,7 @@ modelAccessMode: self_managed
 
 ### 2. `clowder_default_profile`
 
-适合 ACP agent 支持 `modelProfileOverride` 的场景，例如 `agent-teams`。
+适合 ACP agent 支持 `modelProfileOverride` 的场景，例如 `relay-teams`。
 
 - Clowder 会在 `session/new` 或 `session/load` 时下发模型配置
 - 需要先创建 ACP Model Profile
@@ -80,52 +80,52 @@ modelAccessMode: self_managed
 推荐示例：
 
 ```text
-displayName: agent-teams
+displayName: relay-teams
 kind: acp
-command: agent-teams
+command: relay-teams
 args: gateway acp stdio
-cwd: /opt/workspace/agent-teams
+cwd: /opt/workspace/relay-teams
 env:
   ACP_TRACE_STDIO: "1"
-  AGENT_TEAMS_LOG_LEVEL: "DEBUG"
+  RELAY_TEAMS_LOG_LEVEL: "DEBUG"
 modelAccessMode: clowder_default_profile
-defaultModelProfileRef: agent-teams
+defaultModelProfileRef: relay-teams
 ```
 
 ## 推荐配置
 
-### agent-teams
+### relay-teams
 
 先安装 CLI：
 
 ```bash
-pip install cool-play-agent-teams
+pip install relay-teams
 ```
 
 如果机器上没有系统 `pip`，可以用等价方式：
 
 ```bash
-uv tool install cool-play-agent-teams
+uv tool install relay-teams
 ```
 
 创建 provider 时推荐使用：
 
 ```text
-command: agent-teams
+command: relay-teams
 args: gateway acp stdio
-cwd: /opt/workspace/agent-teams
+cwd: /opt/workspace/relay-teams
 env:
   ACP_TRACE_STDIO: "1"
-  AGENT_TEAMS_LOG_LEVEL: "DEBUG"
+  RELAY_TEAMS_LOG_LEVEL: "DEBUG"
 modelAccessMode: clowder_default_profile
-defaultModelProfileRef: agent-teams
+defaultModelProfileRef: relay-teams
 ```
 
 说明：
 
-- `command` 直接写 `agent-teams`，不要再依赖 `uv --directory ... run`
-- `cwd` 可以保留成 agent-teams 仓库路径，便于本地诊断和读取仓库态说明文件
-- `env` 适合放 agent-teams 自己识别的运行时开关，例如 `ACP_TRACE_STDIO=1`
+- `command` 直接写 `relay-teams`，不要再依赖 `uv --directory ... run`
+- `cwd` 可以保留成 relay-teams 仓库路径，便于本地诊断和读取仓库态说明文件
+- `env` 适合放 relay-teams 自己识别的运行时开关，例如 `ACP_TRACE_STDIO=1`
 - `defaultModelProfileRef` 要指向一个存在且带密钥的 ACP Model Profile
 
 ### opencode
@@ -182,7 +182,7 @@ modelAccessMode: self_managed
 
 ```text
 ACP_TRACE_STDIO=1
-AGENT_TEAMS_LOG_LEVEL=DEBUG
+RELAY_TEAMS_LOG_LEVEL=DEBUG
 ```
 
 支持空值，例如：
@@ -227,7 +227,7 @@ accountRef: <providerProfileId>
 
 常见做法：
 
-- `agentteams` 绑定 `agent-teams`
+- `agentteams` 绑定 `relay-teams`
 - `opencodeacp` 绑定 `opencode-acp`
 
 ## 测试方法
@@ -282,12 +282,12 @@ THREADS=<返回数量>
 
 - 消息气泡显示 `CLI Output · done · 2 tools`
 - 最终文本类似 `SKILL=deepresearch` 与 `THREADS=<n>`
-- `~/.agent-teams/log/backend.log` 里能看到 `mcp/connect`、`tools/list`、`tools/call`
+- `~/.relay-teams/log/backend.log` 里能看到 `mcp/connect`、`tools/list`、`tools/call`
 
 可直接执行：
 
 ```bash
-rg -n "mcp/connect|tools/list|tools/call" ~/.agent-teams/log/backend.log
+rg -n "mcp/connect|tools/list|tools/call" ~/.relay-teams/log/backend.log
 ```
 
 ### 2.2 中断恢复验证
@@ -313,19 +313,19 @@ curl -X POST http://127.0.0.1:3004/api/messages \
 
 ### 3. 带环境变量的端到端验证
 
-如果你要确认 ACP provider 的自定义环境变量真的进了 agent 运行时，推荐用 `agent-teams` 做最小验证：
+如果你要确认 ACP provider 的自定义环境变量真的进了 agent 运行时，推荐用 `relay-teams` 做最小验证：
 
-1. 在 Hub 的 `agent-teams` provider 上填写：
+1. 在 Hub 的 `relay-teams` provider 上填写：
 
 ```text
 ACP_TRACE_STDIO=1
-AGENT_TEAMS_LOG_LEVEL=DEBUG
+RELAY_TEAMS_LOG_LEVEL=DEBUG
 ```
 
 2. 保存后确认 provider 卡片摘要出现：
 
 ```text
-环境变量: ACP_TRACE_STDIO, AGENT_TEAMS_LOG_LEVEL
+环境变量: ACP_TRACE_STDIO, RELAY_TEAMS_LOG_LEVEL
 ```
 
 3. 再在聊天框发送：
@@ -337,21 +337,21 @@ AGENT_TEAMS_LOG_LEVEL=DEBUG
 4. 期望结果：
 
 - 前端收到 `ENV OK`
-- 消息气泡 metadata 仍然显示 `agent-teams · acp`
+- 消息气泡 metadata 仍然显示 `relay-teams · acp`
 - 右侧 `Session Chain` 出现新的 ACP session
 
-5. 如需进一步确认 env 已进入 `agent-teams` 子进程，可观察：
+5. 如需进一步确认 env 已进入 `relay-teams` 子进程，可观察：
 
-- `~/.agent-teams/log/backend.log` 里出现 `gateway.acp.inbound` / `gateway.acp.outbound`
-- 这依赖 `ACP_TRACE_STDIO=1` 和 `AGENT_TEAMS_LOG_LEVEL=DEBUG` 同时生效
+- `~/.relay-teams/log/backend.log` 里出现 `gateway.acp.inbound` / `gateway.acp.outbound`
+- 这依赖 `ACP_TRACE_STDIO=1` 和 `RELAY_TEAMS_LOG_LEVEL=DEBUG` 同时生效
 
 可直接执行：
 
 ```bash
-rg -n "gateway\\.acp\\.(inbound|outbound)" ~/.agent-teams/log/backend.log
+rg -n "gateway\\.acp\\.(inbound|outbound)" ~/.relay-teams/log/backend.log
 ```
 
-如果你还想确认 `clowder_default_profile` 的模型下发确实到达 `agent-teams`，可以读取它的会话数据库：
+如果你还想确认 `clowder_default_profile` 的模型下发确实到达 `relay-teams`，可以读取它的会话数据库：
 
 ```bash
 python - <<'PY'
@@ -359,7 +359,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-path = Path.home() / ".agent-teams" / "agent_teams.db"
+path = Path.home() / ".relay-teams" / "relay_teams.db"
 conn = sqlite3.connect(path)
 conn.row_factory = sqlite3.Row
 row = conn.execute(
@@ -390,7 +390,7 @@ PY
 
 - 确认 CLI 已安装
 - 确认服务进程的 PATH 能解析到对应命令
-- 对 `agent-teams`，优先检查 `which agent-teams`
+- 对 `relay-teams`，优先检查 `which relay-teams`
 
 ### `ACP model profile ... not found or missing apiKey`
 

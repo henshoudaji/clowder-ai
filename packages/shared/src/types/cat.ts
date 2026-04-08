@@ -1,6 +1,6 @@
 /**
  * Cat Types and Configurations
- * 三只 AI 猫猫的类型定义和配置
+ * AI 智能体的类型定义和配置
  */
 
 import type { ContextBudget, EmbeddedAcpConfig } from './cat-breed.js';
@@ -43,7 +43,7 @@ export interface CatColor {
 export type EmbeddedRuntimeKind = 'agentteams_acp';
 
 const EMBEDDED_RUNTIME_SEEDS: Readonly<Record<string, { provider: string; kind: EmbeddedRuntimeKind }>> = {
-  agentteams: { provider: 'acp', kind: 'agentteams_acp' },
+  acp: { provider: 'acp', kind: 'agentteams_acp' },
 };
 
 export function resolveEmbeddedRuntimeKind(input: {
@@ -52,7 +52,7 @@ export function resolveEmbeddedRuntimeKind(input: {
   source?: string | null;
 }): EmbeddedRuntimeKind | null {
   if (input.source === 'runtime') return null;
-  const entry = input.id ? EMBEDDED_RUNTIME_SEEDS[input.id] : undefined;
+  const entry = input.provider ? EMBEDDED_RUNTIME_SEEDS[input.provider] : undefined;
   if (!entry) return null;
   return entry.kind;
 }
@@ -68,7 +68,7 @@ export interface CatConfig {
   readonly id: CatId;
   readonly name: string;
   readonly displayName: string;
-  /** Nickname given by 铲屎官 (e.g. 宪宪, 砚砚). See docs/stories/cat-names/ */
+  /** Friendly nickname (e.g. 小九, 小理) */
   readonly nickname?: string;
   readonly avatar: string;
   readonly color: CatColor;
@@ -127,56 +127,57 @@ export interface CatState {
 export const CAT_CONFIGS: Record<string, CatConfig> = {
   opus: {
     id: createCatId('opus'),
-    name: '布偶猫',
-    displayName: '布偶猫',
-    nickname: '宪宪',
-    avatar: '/avatars/opus.png',
+    name: '办公智能体',
+    displayName: '办公智能体',
+    nickname: '小九',
+    avatar: '/avatars/agent-avatar-2.png',
     color: {
-      primary: '#9B7EBD',
-      secondary: '#E8DFF5',
+      primary: '#2B5797',
+      secondary: '#C0D0E8',
     },
-    mentionPatterns: ['@opus', '@布偶猫', '@布偶', '@ragdoll', '@宪宪'],
+    mentionPatterns: ['@opus', '@office', '@小九', '@办公智能体'],
     provider: 'anthropic',
     defaultModel: 'claude-sonnet-4-5-20250929',
     mcpSupport: true,
     breedId: 'ragdoll',
-    roleDescription: '主架构师和核心开发者，擅长深度思考和系统设计',
-    personality: '温柔但有主见，喜欢深入分析问题，写代码快但注重质量',
+    roleDescription: '商务办公专家，擅长文档撰写、会议纪要、项目管理和数据分析',
+    personality: '专业干练，逻辑清晰，善于结构化输出和流程优化',
   },
   codex: {
     id: createCatId('codex'),
-    name: '缅因猫',
-    displayName: '缅因猫',
-    nickname: '砚砚',
-    avatar: '/avatars/codex.png',
+    name: '通用智能体',
+    displayName: '通用智能体',
+    nickname: '小理',
+    avatar: '/avatars/agent-avatar-1.png',
     color: {
-      primary: '#5B8C5A',
-      secondary: '#D4E6D3',
+      primary: '#E8913A',
+      secondary: '#FFF0DD',
     },
-    mentionPatterns: ['@codex', '@缅因猫', '@缅因', '@maine', '@砚砚'],
+    mentionPatterns: ['@codex', '@assistant', '@小理', '@通用智能体'],
     provider: 'openai',
     defaultModel: 'codex',
     mcpSupport: false,
     breedId: 'maine-coon',
-    roleDescription: '代码审查专家，擅长安全分析、测试覆盖和代码质量把控',
-    personality: '严谨认真，注重细节，会直言不讳地指出问题',
+    roleDescription: '个人助理，擅长日常问答、信息整理、创意写作和生活建议',
+    personality: '温暖亲切，耐心细致，善于倾听和陪伴式交流',
   },
   gemini: {
     id: createCatId('gemini'),
-    name: '暹罗猫',
-    displayName: '暹罗猫',
-    avatar: '/avatars/gemini.png',
+    name: '编码智能体',
+    displayName: '编码智能体',
+    nickname: '小码',
+    avatar: '/avatars/agent-avatar-3.png',
     color: {
-      primary: '#5B9BD5',
-      secondary: '#D6E9F8',
+      primary: '#4CAF50',
+      secondary: '#E8F5E9',
     },
-    mentionPatterns: ['@gemini', '@暹罗猫', '@暹罗', '@siamese', '@暄罗猫', '@暄罗'],
+    mentionPatterns: ['@gemini', '@agentteams', '@小码', '@编码智能体'],
     provider: 'google',
     defaultModel: 'gemini-2.5-pro',
     mcpSupport: false,
     breedId: 'siamese',
-    roleDescription: '视觉设计师和创意顾问，擅长 UI/UX 设计和视觉表达',
-    personality: '活泼有创意，善于用视觉语言表达想法，喜欢尝试新事物',
+    roleDescription: '多智能体协作引擎，擅长复杂任务拆解、多步骤编排和工具链调度',
+    personality: '冷静高效的任务指挥官，擅长将复杂问题拆解为可执行步骤并协调多方资源完成',
   },
   jiuwenclaw: {
     id: createCatId('jiuwenclaw'),

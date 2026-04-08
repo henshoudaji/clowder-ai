@@ -36,11 +36,11 @@ const DEFAULT_MAX_TOTAL_TOKENS = 2000;
 
 /**
  * Get display name for a message sender.
- * catId === null → user ("铲屎官"), otherwise look up CAT_CONFIGS.
+ * catId === null → user ("用户"), otherwise look up CAT_CONFIGS.
  * For variant cats (e.g. sonnet, opus-45), includes variantLabel to distinguish same-family members.
  */
 function getSenderName(catId: string | null): string {
-  if (catId === null) return '铲屎官';
+  if (catId === null) return '用户';
   const entry = catRegistry.tryGet(catId);
   const config = entry?.config ?? CAT_CONFIGS[catId];
   if (!config) return catId;

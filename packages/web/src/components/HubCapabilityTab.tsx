@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/utils/api-client';
 import type { CapabilityBoardItem, CapabilityBoardResponse, CatFamily, ToggleHandler } from './capability-board-ui';
-import { CapabilitySection, SectionIconSkill, StatusDot } from './capability-board-ui';
-import { CreateApiKeyProfileSection } from './hub-provider-profiles.sections';
+import { CapabilityCard } from './capability-board-ui';
 import { useConfirm } from './useConfirm';
-import { useProviderProfilesState } from './useProviderProfilesState';
 
 const ALL_CATEGORY = '全部';
 const UNCATEGORIZED = '其他';
@@ -15,6 +13,7 @@ const SKILL_SEARCH_PLACEHOLDER = '输入关键字搜索、过滤';
 const SKILL_SEARCH_ARIA_LABEL = '搜索我的技能';
 const SOURCE_FILTER_ARIA_LABEL = '筛选来源';
 const IMPORT_LABEL = '导入';
+const NO_SEARCH_RESULTS_TITLE = '未找到匹配技能';
 
 function sourceToLabel(source: string): string {
   if (source === 'cat-cafe') return '官方';
@@ -40,7 +39,6 @@ export function HubCapabilityTab({
   const [activeSource, setActiveSource] = useState(ALL_SOURCES);
   const [toggling, setToggling] = useState<string | null>(null);
 
-  const { providerCreateSectionProps } = useProviderProfilesState();
   const confirm = useConfirm();
 
   const fetchCapabilities = useCallback(async () => {
@@ -114,7 +112,7 @@ export function HubCapabilityTab({
   const handleUninstall = useCallback(
     async (skillId: string) => {
       const ok = await confirm({
-        title: '卸载 Skill',
+        title: '卸载技能',
         message: `确定要卸载 “${skillId}” 吗？此操作不可恢复。`,
         confirmLabel: '卸载',
         cancelLabel: '取消',
@@ -184,10 +182,10 @@ export function HubCapabilityTab({
   if (loading) return <p className="text-sm text-[var(--text-muted)]">加载中...</p>;
 
   return (
-    <div className="space-y-0">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {error && <p className="ui-status-error rounded-[var(--radius-md)] px-3 py-2 text-sm">{error}</p>}
 
-      <div className="space-y-3">
+      <div data-testid="hub-capability-fixed-header">
         <div className="flex flex-wrap items-center gap-4">
           {categoryTabs.map((category, index) => (
             <div key={category} className="flex items-center">
@@ -206,55 +204,65 @@ export function HubCapabilityTab({
             </div>
           ))}
         </div>
+        <div className="pt-6">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[20px] font-semibold">{`${activeCategory} (${filteredDisplayedSkillItems.length})`}</p>
+            {onImport ? (
+              <button
+                type="button"
+                onClick={onImport}
+                className="ui-button-default min-h-[var(--control-height-touch)] shrink-0 sm:min-h-[var(--control-height-sm)]"
+              >
+                {IMPORT_LABEL}
+              </button>
+            ) : null}
+          </div>
+          <div className="py-6">
+            <div className="flex items-center gap-2">
+              <select
+                aria-label={SOURCE_FILTER_ARIA_LABEL}
+                value={activeSource}
+                onChange={(event) => setActiveSource(event.target.value)}
+                className="ui-field h-[28px] min-h-[28px] w-[200px] shrink-0 px-3 py-0 pr-8 text-xs"
+              >
+                {sourceOptions.map((source) => (
+                  <option key={source} value={source}>
+                    {source === ALL_SOURCES ? '全部来源' : sourceToLabel(source)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="search"
+                aria-label={SKILL_SEARCH_ARIA_LABEL}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={SKILL_SEARCH_PLACEHOLDER}
+                className="ui-input h-[28px] min-h-[28px] w-full px-3 py-0 text-xs"
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
-      <CapabilitySection
-        icon={<SectionIconSkill />}
-        title={`${activeCategory} (${displayedSkillItems.length})`}
-        subtitle="已安装技能"
-        headerSlotClassName="mt-0 py-6"
-        titleActionSlot={
-          onImport ? (
-            <button
-              type="button"
-              onClick={onImport}
-              className="ui-button-secondary min-h-[var(--control-height-touch)] shrink-0 sm:min-h-[var(--control-height-sm)]"
-            >
-              {IMPORT_LABEL}
-            </button>
-          ) : undefined
-        }
-        headerSlot={(
-          <div className="flex items-center gap-2">
-            <select
-              aria-label={SOURCE_FILTER_ARIA_LABEL}
-              value={activeSource}
-              onChange={(event) => setActiveSource(event.target.value)}
-              className="ui-field h-[28px] min-h-[28px] w-[200px] shrink-0 px-3 py-0 pr-8 text-xs"
-            >
-              {sourceOptions.map((source) => (
-                <option key={source} value={source}>
-                  {source === ALL_SOURCES ? '全部来源' : sourceToLabel(source)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="search"
-              aria-label={SKILL_SEARCH_ARIA_LABEL}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={SKILL_SEARCH_PLACEHOLDER}
-              className="ui-field h-[28px] min-h-[28px] w-full px-3 py-0 text-xs"
-            />
+      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="hub-capability-scroll-region">
+        {filteredDisplayedSkillItems.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {filteredDisplayedSkillItems.map((item) => (
+              <CapabilityCard
+                key={`${item.type}:${item.id}`}
+                item={item}
+                catFamilies={catFamilies}
+                toggling={toggling}
+                onToggle={handleToggle}
+                onUninstall={handleUninstall}
+                hideSkillMountStatus={hideSkillMountStatus}
+              />
+            ))}
           </div>
-        )}
-        items={filteredDisplayedSkillItems}
-        catFamilies={catFamilies}
-        toggling={toggling}
-        onToggle={handleToggle}
-        onUninstall={handleUninstall}
-        hideSkillMountStatus={hideSkillMountStatus}
-      />
+        ) : skillItems.length > 0 ? (
+          <h3 className="py-2 text-xs text-[var(--text-muted)]">{NO_SEARCH_RESULTS_TITLE}</h3>
+        ) : null}
+      </div>
 
       {skillItems.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -271,8 +279,7 @@ export function HubCapabilityTab({
               <path d="m21 21-4.35-4.35" />
             </svg>
           </div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">没有找到匹配的能力</h3>
-          <p className="mt-1 max-w-[220px] text-xs text-[var(--text-muted)]">请检查 Skills 配置，或切换分类后重试。</p>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">暂无数据</h3>
         </div>
       )}
     </div>

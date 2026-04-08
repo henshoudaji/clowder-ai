@@ -480,6 +480,10 @@ def get_agent_skills_dir() -> Path:
     return get_agent_root_dir() / "skills"
 
 
+def get_agent_tools_dir() -> Path:
+    return get_agent_root_dir() / "tools"
+
+
 def get_agent_sessions_dir() -> Path:
     return get_agent_root_dir() / "sessions"
 
@@ -525,7 +529,7 @@ def setup_logger(log_level: str = "INFO") -> logging.Logger:
         logger.removeHandler(handler)
 
     formatter = logging.Formatter(
-        fmt="%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s",
+        fmt="%(asctime)s.%(msecs)03d [%(process)d] %(levelname)s %(name)s %(filename)s:%(lineno)d: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -545,3 +549,93 @@ def setup_logger(log_level: str = "INFO") -> logging.Logger:
     return logger
 
 logger = setup_logger(os.getenv("LOG_LEVEL", "INFO"))
+
+
+def _fix_missing_quotes(json_str: str) -> str:
+    """尝试修复 JSON 字符串中缺失的引号。
+
+    常见修复场景：
+    1. 缺少字符串结尾的引号: {"query": hello} -> {"query": "hello"}
+    2. 缺少键的引号（部分情况）: {query: "hello"} -> {"query": "hello"}
+    3. 路径值缺少引号: {"path": D:/work/code/file.txt} -> {"path": "D:/work/code/file.txt"}
+
+    Args:
+        json_str: 可能格式不正确的 JSON 字符串
+
+    Returns:
+        修复后的 JSON 字符串，如果无法修复则返回原字符串
+    """
+    import re
+
+    # 去除前后空白
+    s = json_str.strip()
+
+    # 模式 1: 修复 Windows 路径 (如 D:/path/to/file) 或 C:/path
+    # 直接匹配 ": D:/..." 或 ": C:/..." 模式并添加引号
+    s = re.sub(
+        r':\s+([A-Za-z]:/[^\{\[]*?)(?=\s*[,\}\]])',
+        lambda m: f': "{m.group(1)}"',
+        s
+    )
+
+    # 模式 2: 修复缺少右引号的字符串值（非路径）
+    # 匹配 ": value" 格式，其中 value 是未加引号的字符串
+    # 排除已加引号、保留字、路径（已在模式1处理）
+    s = re.sub(
+        r':\s+(?!"|true|false|null|\d+|{|\[|:|"|[A-Za-z]:/)([^\s,\}\[\]""]+?)(?=\s*[,}\]])',
+        lambda m: f': "{m.group(1)}"',
+        s
+    )
+
+    # 模式 3: 修复键的引号（如 {key: value} -> {"key": value}）
+    # 匹配 {key: 但 key 没有被引号包围
+    s = re.sub(
+        r'{\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:',
+        r'{"":',
+        s
+    )
+
+    return s
+def fix_json_arguments(arguments: str | dict) -> str | dict:
+    """尝试修复并解析工具调用的参数 JSON。
+
+    当 LLM 返回的 tool_calls.function.arguments 格式不正确时（如缺少引号），
+    尝试修复后再解析。
+
+    Args:
+        arguments: 工具参数，可以是字符串或已解析的字典
+
+    Returns:
+        解析后的参数字典，如果解析失败则返回空字典
+    """
+    import json
+
+    # 如果已经是字典，直接返回
+    if not isinstance(arguments, str):
+        return arguments
+
+    # 去除前后空白
+    s = arguments.strip()
+
+    if not s:
+        return {}
+
+    # 第一次尝试：直接解析
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+
+    # 第二次尝试：修复常见问题
+    fixed = _fix_missing_quotes(s)
+    if fixed != s:
+        try:
+            result = json.loads(fixed)
+            logger.info(f"[fix_json_arguments] 成功修复 JSON: {s[:50]}... -> {result}")
+            return result
+        except json.JSONDecodeError:
+            pass
+
+    # 所有修复尝试都失败
+    logger.warning(f"[fix_json_arguments] 无法修复 JSON: {s[:100]}...")
+    return {}

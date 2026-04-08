@@ -217,7 +217,7 @@ export function SliceLadder({ projectId, slices, onUpdate }: SliceLadderProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Slice name"
-            style={{ border: '1px solid #E7DAC7', borderRadius: 6, padding: '6px 10px', fontSize: 13 }}
+            className="ui-input rounded-[6px] px-[10px] py-[6px] text-[13px]"
           />
           <select
             value={sliceType}
@@ -233,38 +233,26 @@ export function SliceLadder({ projectId, slices, onUpdate }: SliceLadderProps) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Description"
             rows={2}
-            style={{
-              border: '1px solid #E7DAC7',
-              borderRadius: 6,
-              padding: '6px 10px',
-              fontSize: 13,
-              resize: 'vertical',
-            }}
+            className="ui-textarea rounded-[6px] px-[10px] py-[6px] text-[13px]"
           />
           <input
             value={actor}
             onChange={(e) => setActor(e.target.value)}
             placeholder="Actor"
-            style={{ border: '1px solid #E7DAC7', borderRadius: 6, padding: '6px 10px', fontSize: 13 }}
+            className="ui-input rounded-[6px] px-[10px] py-[6px] text-[13px]"
           />
           <input
             value={workflow}
             onChange={(e) => setWorkflow(e.target.value)}
             placeholder="Workflow"
-            style={{ border: '1px solid #E7DAC7', borderRadius: 6, padding: '6px 10px', fontSize: 13 }}
+            className="ui-input rounded-[6px] px-[10px] py-[6px] text-[13px]"
           />
           <textarea
             value={verifiableOutcome}
             onChange={(e) => setVerifiableOutcome(e.target.value)}
             placeholder="Verifiable outcome"
             rows={2}
-            style={{
-              border: '1px solid #E7DAC7',
-              borderRadius: 6,
-              padding: '6px 10px',
-              fontSize: 13,
-              resize: 'vertical',
-            }}
+            className="ui-textarea rounded-[6px] px-[10px] py-[6px] text-[13px]"
           />
           <button
             type="button"

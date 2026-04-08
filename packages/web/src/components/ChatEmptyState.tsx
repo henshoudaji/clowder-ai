@@ -29,7 +29,7 @@ const heroCards: EmptyStateCard[] = [
   {
     id: 'channels',
     title: '一键接入 IM',
-    description: '一键接入飞书、钉钉、小艺、WeLink 渠道，无缝推进办公流程。',
+    description: '一键接入飞书、微信、钉钉、小艺渠道，无缝推进办公流程。',
     imageSrc: '/images/chat-empty-im.svg',
     imageAlt: '一键接入 IM',
   },
@@ -58,7 +58,7 @@ export function ChatEmptyState({
       <div className="mx-auto flex min-h-[calc(100vh-21rem)] max-w-4xl items-center justify-center">
         <div className="w-full text-center">
           <div className="mx-auto max-w-2xl">
-            <h2 className="text-[34px] font-semibold leading-tight tracking-[-0.03em] text-[#1F1F24] sm:text-[42px]">
+            <h2 className="text-[34px] font-semibold leading-tight tracking-[-0.03em] text-[#1F1F24] sm:text-[36px]">
               <span className="text-[#4D6BFF]">OfficeClaw</span>
               <span className="text-[#4D6BFF]">，</span>
               <span>制定目标自动规划执行</span>
@@ -74,7 +74,7 @@ export function ChatEmptyState({
                 key={card.id}
                 type="button"
                 onClick={() => handleCardClick(card.id)}
-                className="rounded-[22px] border border-[#EEF0F5] bg-white px-6 py-6 text-left shadow-[0_14px_40px_rgba(17,24,39,0.05)] transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4D6BFF] focus-visible:ring-offset-2"
+                className="rounded-[16px] border border-[#EEF0F5] bg-white px-6 py-6 text-left transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4D6BFF] focus-visible:ring-offset-2"
                 data-testid={`chat-empty-card-${card.id}`}
               >
                 <div className="flex items-start gap-4">

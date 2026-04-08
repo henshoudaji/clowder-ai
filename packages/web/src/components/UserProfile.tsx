@@ -25,7 +25,8 @@ const THEME_OPTIONS: Array<{
   {
     id: 'warm',
     label: '橙白浅色',
-    swatchBackground: '#f6d7c6',
+    swatchBackground:
+      'linear-gradient(-65.45deg, rgba(123, 72, 255, 1), rgba(200, 27, 181, 0.74) 24%, rgba(255, 100, 84, 0.44) 50%, rgba(255, 119, 49, 0.35) 72%, rgba(255, 92, 12, 1) 100%)',
   },
 ];
 
@@ -160,18 +161,18 @@ export function UserProfile({ className }: UserProfileProps) {
         className="group flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-gray-50"
         data-testid="user-profile-toggle"
       >
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-cocreator-primary">
-          <span className="text-sm font-bold text-white">{avatarLetter}</span>
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F2F2]">
+          <span className="text-sm font-bold text-[#191919]">{avatarLetter}</span>
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-gray-900" title={userName}>
+          <div className="truncate text-[16px] font-medium text-gray-900" title={userName}>
             {userName}
           </div>
         </div>
 
         <svg
-          className={`h-4 w-4 text-gray-400 transition-transform ${showPanel ? 'rotate-90' : ''}`}
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${showPanel ? 'rotate-90' : ''}`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -186,15 +187,16 @@ export function UserProfile({ className }: UserProfileProps) {
           className="absolute bottom-full left-3 right-3 z-50 mb-2 rounded-3xl border border-gray-200 bg-white shadow-lg"
           data-testid="user-profile-panel"
         >
-          <div className="p-5" data-testid="user-profile-panel-scroll" ref={panelScrollRef}>
+          <div className="p-4" data-testid="user-profile-panel-scroll" ref={panelScrollRef}>
             <div className="mb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cocreator-primary">
-                  <span className="text-base font-bold text-white">{avatarLetter}</span>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F2F2F2]">
+                  <span className="text-base font-bold text-[#191919]">{avatarLetter}</span>
                 </div>
-                <div>
-                  <div className="text-base font-semibold text-gray-900">{userName}</div>
-                  <div className="text-xs text-gray-500">已登录</div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-base font-normal text-gray-900" title={userName}>
+                    {userName}
+                  </div>
                 </div>
               </div>
             </div>
@@ -203,7 +205,7 @@ export function UserProfile({ className }: UserProfileProps) {
 
             <div className="space-y-3" data-testid="user-profile-content-actions">
               <button
-                className="hidden flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="hidden flex w-full items-center gap-2 rounded-md px-3 py-2 text-[16px] font-normal leading-[20px] text-gray-700 transition-colors hover:bg-gray-50"
                 onClick={handleOpenVersionUpdate}
               >
                 <img src="/icons/userprofile/version.svg" alt="" aria-hidden="true" className="h-5 w-5 shrink-0" />
@@ -212,7 +214,7 @@ export function UserProfile({ className }: UserProfileProps) {
 
               <div className="relative" data-testid="user-profile-theme-anchor" ref={themeAnchorRef}>
                 <button
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[16px] font-normal leading-[20px] text-gray-700 transition-colors hover:bg-gray-50"
                   onClick={handleToggleThemePanel}
                   data-testid="user-profile-theme-trigger"
                 >
@@ -221,7 +223,7 @@ export function UserProfile({ className }: UserProfileProps) {
                 </button>
               </div>
 
-              <button className="hidden flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50">
+              <button className="hidden flex w-full items-center gap-2 rounded-md px-3 py-2 text-[16px] font-normal leading-[20px] text-gray-700 transition-colors hover:bg-gray-50">
                 <img src="/icons/userprofile/help.svg" alt="" aria-hidden="true" className="h-5 w-5 shrink-0" />
                 帮助
               </button>
@@ -263,11 +265,29 @@ export function UserProfile({ className }: UserProfileProps) {
                     }`}
                     data-testid={`user-theme-option-${option.id}`}
                   >
-                    <div
-                      className={`h-9 w-9 rounded-full`}
-                      data-testid={`user-theme-swatch-${option.id}`}
-                      style={{ background: option.swatchBackground }}
-                    />
+                    <div className="relative">
+                      <div
+                        className="h-9 w-9 rounded-full"
+                        data-testid={`user-theme-swatch-${option.id}`}
+                        style={{ background: option.swatchBackground }}
+                      />
+                      {isActive && (
+                        <div
+                          className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white"
+                          data-testid={`user-theme-selected-badge-${option.id}`}
+                        >
+                          <svg className="h-2.5 w-2.5" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path
+                              d="M4 8.25 6.5 10.75 12 5.25"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
                     <span className="text-[12px] font-medium leading-[18px] text-[#2E3440]">{option.label}</span>
                   </button>
                 );

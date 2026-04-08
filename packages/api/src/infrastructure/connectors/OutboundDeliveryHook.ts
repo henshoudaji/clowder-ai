@@ -113,8 +113,7 @@ export class OutboundDeliveryHook {
 
     const entry = catId ? catRegistry.tryGet(catId) : undefined;
     const catDisplayName = entry?.config.displayName ?? '';
-    const catEmoji = '🐱';
-    const textPrefix = catDisplayName ? `[${catDisplayName}🐱] ` : '';
+    const textPrefix = catDisplayName ? `[${catDisplayName}] ` : '';
     const finalContent = `${textPrefix}${content}`;
 
     const hasRichBlocks = richBlocks && richBlocks.length > 0;
@@ -134,8 +133,7 @@ export class OutboundDeliveryHook {
           if (adapter.sendFormattedReply && !hasRichBlocks) {
             const envelope = threadMeta
               ? this.formatter.format({
-                  catDisplayName: catDisplayName || 'Cat',
-                  catEmoji,
+                  catDisplayName: catDisplayName || 'Agent',
                   threadShortId: threadMeta.threadShortId,
                   threadTitle: threadMeta.threadTitle,
                   featId: threadMeta.featId,
@@ -145,8 +143,7 @@ export class OutboundDeliveryHook {
                   origin,
                 })
               : this.formatter.formatMinimal({
-                  catDisplayName: catDisplayName || 'Cat',
-                  catEmoji,
+                  catDisplayName: catDisplayName || 'Agent',
                   body: content,
                   origin,
                 });
@@ -156,7 +153,7 @@ export class OutboundDeliveryHook {
               binding.externalChatId,
               content,
               richBlocks,
-              catDisplayName || 'Cat',
+              catDisplayName || 'Agent',
               outMeta,
             );
           } else if (hasRichBlocks) {

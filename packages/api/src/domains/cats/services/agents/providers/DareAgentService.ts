@@ -6,8 +6,11 @@
  * - a bundled standalone executable such as `vendor/dare.exe`
  */
 
+import { createHash } from 'node:crypto';
 import { accessSync, existsSync, constants as fsConstants, lstatSync, readFileSync } from 'node:fs';
-import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { type CatId, createCatId } from '@cat-cafe/shared';
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { getContextWindowFallback } from '../../../../../config/context-window-sizes.js';
@@ -41,6 +44,183 @@ function preferCompactMcpEntry(mcpPath: string): string {
   return existsSync(compactPath) ? compactPath : mcpPath;
 }
 
+const DARE_MCP_CONFIG_EXTENSIONS = new Set(['.json', '.yaml', '.yml', '.md', '.markdown']);
+const DARE_MCP_JS_ENTRY_EXTENSIONS = new Set(['.js', '.mjs', '.cjs']);
+const SHOULD_EMIT_DIAGNOSTICS =
+  !process.argv.includes('--test') &&
+  !process.execArgv.includes('--test') &&
+  process.env.CAT_CAFE_DARE_DIAG_LOG === '1';
+
+type JsonObject = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return [value];
+  }
+  return [];
+}
+
+function toStringMap(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === 'string') result[key] = entry;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function resolveBridgeConfigPath(seed: string): string {
+  const digest = createHash('sha1').update(seed).digest('hex').slice(0, 12);
+  return join(tmpdir(), `cat-cafe-dare-mcp-${digest}.json`);
+}
+
+function normalizeMcpServerName(name: string): string | null {
+  const normalized = name
+    .trim()
+    .replace(/[^A-Za-z0-9_]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  if (normalized.length === 0) return null;
+  if (/^\d/.test(normalized)) return `mcp_${normalized}`;
+  return normalized;
+}
+
+function makeUniqueServerName(baseName: string, usedNames: Set<string>): string {
+  if (!usedNames.has(baseName)) {
+    usedNames.add(baseName);
+    return baseName;
+  }
+  let suffix = 2;
+  while (usedNames.has(`${baseName}_${suffix}`)) {
+    suffix += 1;
+  }
+  const candidate = `${baseName}_${suffix}`;
+  usedNames.add(candidate);
+  return candidate;
+}
+
+function inferCwdFromCommand(command: string, args: string[]): string | undefined {
+  if (args.length > 0 && isAbsolute(args[0]!)) {
+    return dirname(args[0]!);
+  }
+  if (isAbsolute(command)) {
+    return dirname(command);
+  }
+  return undefined;
+}
+
+function sanitizeArgValue(flag: string, value: string): string {
+  if (flag === '--task' || flag === '--system-prompt-text') {
+    return `<redacted:${value.length} chars>`;
+  }
+  return value;
+}
+
+function sanitizeArgsForLog(args: string[]): string[] {
+  const sanitized = [...args];
+  const valueFlags = new Set([
+    '--task',
+    '--system-prompt-text',
+    '--adapter',
+    '--model',
+    '--endpoint',
+    '--workspace',
+    '--session-id',
+    '--mcp-path',
+  ]);
+  for (let i = 0; i < sanitized.length; i += 1) {
+    const current = sanitized[i];
+    if (!current || !valueFlags.has(current)) continue;
+    const next = sanitized[i + 1];
+    if (!next) continue;
+    sanitized[i + 1] = sanitizeArgValue(current, next);
+    i += 1;
+  }
+  return sanitized;
+}
+
+function summarizeEnvForLog(env: Record<string, string | null>): Record<string, string> {
+  const summary: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === null) {
+      summary[key] = '(cleared)';
+      continue;
+    }
+    if (/key|secret|token|password|authorization/i.test(key)) {
+      summary[key] = value.length > 8 ? `${value.slice(0, 6)}***(${value.length})` : `${value[0] ?? ''}***(${value.length})`;
+      continue;
+    }
+    summary[key] = value.length > 160 ? `${value.slice(0, 160)}...(truncated)` : value;
+  }
+  return summary;
+}
+
+function extractArgValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index < 0) return undefined;
+  return args[index + 1];
+}
+
+function emitDareDiagnostic(level: 'info' | 'debug', message: string, payload: Record<string, unknown>): void {
+  if (!SHOULD_EMIT_DIAGNOSTICS) return;
+  const line = JSON.stringify({ module: 'dare-agent', ...payload, msg: message });
+  if (level === 'debug') {
+    if (process.argv.includes('--debug') || process.env.LOG_LEVEL === 'debug') {
+      console.debug(line);
+    }
+    return;
+  }
+  console.info(line);
+}
+
+function buildClaudeStyleDareServers(data: JsonObject): JsonObject[] | null {
+  const mcpServers = data.mcpServers;
+  if (!isRecord(mcpServers)) return null;
+
+  const servers: JsonObject[] = [];
+  const usedServerNames = new Set<string>();
+  for (const [rawName, rawConfig] of Object.entries(mcpServers)) {
+    const normalizedName = normalizeMcpServerName(rawName);
+    if (!normalizedName || !isRecord(rawConfig)) continue;
+    const name = makeUniqueServerName(normalizedName, usedServerNames);
+
+    const enabled = rawConfig.enabled !== false;
+    if (!enabled) continue;
+
+    const maybeType = typeof rawConfig.type === 'string' ? rawConfig.type : '';
+    const maybeUrl = typeof rawConfig.url === 'string' ? rawConfig.url.trim() : '';
+    if (maybeType === 'http' || maybeUrl.length > 0) {
+      if (maybeUrl.length === 0) continue;
+      const headers = toStringMap(rawConfig.headers);
+      const server: JsonObject = { name, transport: 'http', url: maybeUrl, enabled: true };
+      if (headers) server.headers = headers;
+      servers.push(server);
+      continue;
+    }
+
+    const command = typeof rawConfig.command === 'string' ? rawConfig.command.trim() : '';
+    if (command.length === 0) continue;
+    const args = toStringArray(rawConfig.args);
+    const env = toStringMap(rawConfig.env);
+    const explicitCwd =
+      typeof rawConfig.cwd === 'string' && rawConfig.cwd.trim().length > 0 ? rawConfig.cwd.trim() : undefined;
+    const cwd = explicitCwd ?? inferCwdFromCommand(command, args);
+    const server: JsonObject = { name, transport: 'stdio', command: [command, ...args], enabled: true };
+    if (env) server.env = env;
+    if (cwd) server.cwd = cwd;
+    servers.push(server);
+  }
+  return servers;
+}
+
 interface DareAgentServiceOptions {
   catId?: CatId;
   adapter?: string;
@@ -49,7 +229,7 @@ interface DareAgentServiceOptions {
   apiKey?: string;
   /** Path to a DARE source checkout, or a bundled dare executable. */
   darePath?: string;
-  /** Absolute path to the MCP server entry file for --mcp-path. */
+  /** Absolute path to Dare MCP config path for --mcp-path (file/dir), or legacy JS entry path. */
   mcpServerPath?: string;
   spawnFn?: SpawnFn;
 }
@@ -71,6 +251,7 @@ interface DareLaunchSpec {
 const DARE_API_KEY_ENV = 'DARE_API_KEY';
 const DARE_ENDPOINT_ENV = 'DARE_ENDPOINT';
 const DARE_ADAPTER_OVERRIDE_ENV = 'CAT_CAFE_DARE_ADAPTER';
+const DARE_SSL_VERIFY_ENV = 'DARE_SSL_VERIFY';
 
 const ADAPTER_KEY_ENV: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
@@ -286,6 +467,54 @@ export class DareAgentService implements AgentService {
     this.spawnFn = options?.spawnFn;
   }
 
+  private async resolveMcpPathForDare(workspace?: string): Promise<string | undefined> {
+    const configuredPath = this.mcpServerPath;
+    if (!configuredPath) return undefined;
+
+    // DARE loader accepts directories and {.json,.yaml,.md} config files.
+    const extension = extname(configuredPath).toLowerCase();
+    if (!extension) return configuredPath;
+    if (DARE_MCP_CONFIG_EXTENSIONS.has(extension)) {
+      // Bridge Claude-style `.mcp.json` ({ mcpServers: ... }) when passed to DARE.
+      if (extension === '.json' && existsSync(configuredPath)) {
+        try {
+          const raw = readFileSync(configuredPath, 'utf-8');
+          const data = JSON.parse(raw) as unknown;
+          if (isRecord(data)) {
+            const servers = buildClaudeStyleDareServers(data);
+            if (servers && servers.length > 0) {
+              const bridgePath = resolveBridgeConfigPath(`claude:${configuredPath}`);
+              await writeFile(bridgePath, `${JSON.stringify({ servers }, null, 2)}\n`, 'utf-8');
+              return bridgePath;
+            }
+          }
+        } catch {
+          // Keep configured path on parse failure for backward compatibility.
+        }
+      }
+      return configuredPath;
+    }
+    if (!DARE_MCP_JS_ENTRY_EXTENSIONS.has(extension)) return configuredPath;
+
+    // Legacy CAT_CAFE_MCP_SERVER_PATH points to JS server entry.
+    // Generate a DARE-native JSON config and pass that path instead.
+    try {
+      const bridgePath = resolveBridgeConfigPath(`entry:${configuredPath}:${workspace ?? ''}`);
+      const bridgeServer: JsonObject = {
+        name: 'cat_cafe',
+        transport: 'stdio',
+        command: [process.execPath, configuredPath],
+        cwd: dirname(configuredPath),
+        enabled: true,
+      };
+      await writeFile(bridgePath, `${JSON.stringify(bridgeServer, null, 2)}\n`, 'utf-8');
+      return bridgePath;
+    } catch {
+      // Fall back to original path if bridge file cannot be written.
+      return configuredPath;
+    }
+  }
+
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const workspaceConfig = readWorkspaceDareConfig(options?.workingDirectory);
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_DARE_MODEL_OVERRIDE?.trim() || this.model || undefined;
@@ -332,6 +561,7 @@ export class DareAgentService implements AgentService {
 
     const launchSpec = configuredLaunchSpec ?? buildModuleLaunchSpec(this.darePath);
     const endpoint = this.resolveEndpoint(options?.callbackEnv, effectiveAdapter);
+    const mcpPathForDare = options?.callbackEnv ? await this.resolveMcpPathForDare(options?.workingDirectory) : undefined;
     const args = this.buildArgs(prompt, {
       argsPrefix: launchSpec.argsPrefix,
       adapter: effectiveAdapter,
@@ -341,11 +571,51 @@ export class DareAgentService implements AgentService {
       model: cliModel,
       cliConfigArgs: options?.cliConfigArgs,
       systemPrompt: options?.systemPrompt,
-      mcpServerPath: options?.callbackEnv ? this.mcpServerPath : undefined,
+      mcpServerPath: mcpPathForDare,
     });
-    const childEnv = this.buildEnv(options?.callbackEnv, cliModel, effectiveAdapter);
+    const childEnv = this.buildEnv(
+      options?.callbackEnv,
+      cliModel,
+      effectiveAdapter,
+      options?.acpModelProfile?.sslVerify,
+    );
     const metadata: MessageMetadata = { provider: 'dare', model: metadataModel };
     let sessionInitEmitted = false;
+
+    const cliMcpPath = extractArgValue(args, '--mcp-path');
+    emitDareDiagnostic(
+      'info',
+      'Invoking DARE CLI',
+      {
+        catId: this.catId,
+        invocationId: options?.invocationId ?? null,
+        workspace: options?.workingDirectory ?? null,
+        adapter: effectiveAdapter ?? null,
+        model: cliModel ?? null,
+        endpoint: endpoint ?? null,
+        configuredMcpServerPath: this.mcpServerPath ?? null,
+        resolvedMcpPathForDare: mcpPathForDare ?? null,
+        cliMcpPath: cliMcpPath ?? null,
+        launch: {
+          command: launchSpec.command,
+          runtimeMode: launchSpec.runtimeMode,
+          cwd: launchSpec.cwd ?? null,
+          argsPrefix: launchSpec.argsPrefix,
+        },
+        hasCallbackEnv: Boolean(options?.callbackEnv),
+        callbackEnvKeys: options?.callbackEnv ? Object.keys(options.callbackEnv).sort() : [],
+      },
+    );
+    emitDareDiagnostic(
+      'debug',
+      'DARE CLI args and env summary',
+      {
+        catId: this.catId,
+        invocationId: options?.invocationId ?? null,
+        args: sanitizeArgsForLog(args),
+        envOverrides: summarizeEnvForLog(childEnv),
+      },
+    );
 
     try {
       const cliOpts = {
@@ -488,6 +758,7 @@ export class DareAgentService implements AgentService {
     callbackEnv?: Record<string, string>,
     model?: string,
     adapter?: string,
+    sslVerify?: boolean | null,
   ): Record<string, string | null> {
     const env: Record<string, string | null> = { ...callbackEnv };
     const apiKeyEnvName = adapter ? ADAPTER_KEY_ENV[adapter] : undefined;
@@ -525,6 +796,14 @@ export class DareAgentService implements AgentService {
         const inputBudget = Math.floor(ctxWindow * 0.7);
         env.DARE_CONTEXT_WINDOW_TOKENS = String(inputBudget);
       }
+    }
+
+    if (callbackEnv?.[DARE_SSL_VERIFY_ENV] !== undefined) {
+      env[DARE_SSL_VERIFY_ENV] = callbackEnv[DARE_SSL_VERIFY_ENV];
+    } else if (sslVerify !== undefined && sslVerify !== null) {
+      env[DARE_SSL_VERIFY_ENV] = sslVerify ? '1' : '0';
+    } else {
+      env[DARE_SSL_VERIFY_ENV] = '0';
     }
 
     return env;

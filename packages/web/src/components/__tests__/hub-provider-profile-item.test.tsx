@@ -242,8 +242,8 @@ describe('HubProviderProfileItem', () => {
 
   it('saves ACP provider fields as structured payload', async () => {
     const profile: ProfileItem = {
-      id: 'agent-teams-local',
-      provider: 'agent-teams-local',
+      id: 'relay-teams-local',
+      provider: 'relay-teams-local',
       displayName: 'Agent Teams Local',
       name: 'Agent Teams Local',
       authType: 'none',
@@ -252,8 +252,8 @@ describe('HubProviderProfileItem', () => {
       builtin: false,
       mode: 'none',
       command: 'uv',
-      args: ['--directory', '/opt/workspace/agent-teams', 'run', 'agent-teams', 'gateway', 'acp', 'stdio'],
-      cwd: '/opt/workspace/agent-teams',
+      args: ['--directory', '/opt/workspace/relay-teams', 'run', 'relay-teams', 'gateway', 'acp', 'stdio'],
+      cwd: '/opt/workspace/relay-teams',
       envKeys: ['ACP_TRACE_STDIO'],
       modelAccessMode: 'clowder_default_profile',
       defaultModelProfileRef: 'default-openai',
@@ -301,7 +301,7 @@ describe('HubProviderProfileItem', () => {
       const argsDescriptor = argsInput
         ? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(argsInput), 'value')
         : undefined;
-      argsDescriptor?.set?.call(argsInput, '--directory "/opt/workspace/agent teams" run agent-teams gateway acp stdio');
+      argsDescriptor?.set?.call(argsInput, '--directory "/opt/workspace/agent teams" run relay-teams gateway acp stdio');
       argsInput?.dispatchEvent(new Event('input', { bubbles: true }));
       argsInput?.dispatchEvent(new Event('change', { bubbles: true }));
     });
@@ -310,7 +310,7 @@ describe('HubProviderProfileItem', () => {
       const descriptor = envInput
         ? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(envInput), 'value')
         : undefined;
-      descriptor?.set?.call(envInput, 'ACP_TRACE_STDIO=1\nAGENT_TEAMS_LOG_LEVEL=DEBUG');
+      descriptor?.set?.call(envInput, 'ACP_TRACE_STDIO=1\nRELAY_TEAMS_LOG_LEVEL=DEBUG');
       envInput?.dispatchEvent(new Event('input', { bubbles: true }));
       envInput?.dispatchEvent(new Event('change', { bubbles: true }));
     });
@@ -322,11 +322,11 @@ describe('HubProviderProfileItem', () => {
     expect(onSave.mock.calls[0]![0]).toMatchObject({
       displayName: 'Agent Teams Local',
       command: 'uv',
-      args: ['--directory', '/opt/workspace/agent teams', 'run', 'agent-teams', 'gateway', 'acp', 'stdio'],
-      cwd: '/opt/workspace/agent-teams',
+      args: ['--directory', '/opt/workspace/agent teams', 'run', 'relay-teams', 'gateway', 'acp', 'stdio'],
+      cwd: '/opt/workspace/relay-teams',
       env: {
         ACP_TRACE_STDIO: '1',
-        AGENT_TEAMS_LOG_LEVEL: 'DEBUG',
+        RELAY_TEAMS_LOG_LEVEL: 'DEBUG',
       },
       modelAccessMode: 'clowder_default_profile',
       defaultModelProfileRef: 'default-openai',

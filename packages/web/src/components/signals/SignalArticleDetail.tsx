@@ -287,7 +287,7 @@ export function SignalArticleDetail({
               }
             }}
             placeholder="添加标签"
-            className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs"
+            className="ui-input flex-1 rounded-md px-2 py-1.5 text-xs"
           />
           <button
             type="button"
@@ -316,7 +316,7 @@ export function SignalArticleDetail({
                 onBlur={() => void saveNote()}
                 placeholder="写下你的笔记..."
                 rows={3}
-                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                className="ui-textarea w-full rounded-md px-3 py-2 text-sm"
               />
               <button
                 type="button"

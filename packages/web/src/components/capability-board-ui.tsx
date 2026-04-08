@@ -1,6 +1,8 @@
 ﻿'use client';
 
 import { type ReactNode } from 'react';
+import { InfoTooltip, OverflowTooltip } from './InfoTooltip';
+import { NameInitialIcon } from './NameInitialIcon';
 
 export interface CapabilityBoardItem {
   id: string;
@@ -14,6 +16,7 @@ export interface CapabilityBoardItem {
   mounts?: Record<string, boolean>;
   tools?: { name: string; description?: string }[];
   connectionStatus?: 'connected' | 'disconnected' | 'unknown';
+  installedAt?: string;
 }
 
 export interface CatFamily {
@@ -96,25 +99,6 @@ export function ExtensionIcon({ className }: { className?: string }) {
   );
 }
 
-function getSkillInitial(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const [initial] = Array.from(trimmed);
-  return /[a-z]/i.test(initial) ? initial.toUpperCase() : initial;
-}
-
-function SkillArtwork({ name }: { name: string }) {
-  const initial = getSkillInitial(name);
-  return (
-    <div
-      aria-hidden="true"
-      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-[var(--accent-soft)] shadow-sm"
-    >
-      <span className="text-xl font-bold text-[var(--text-accent)]">{initial}</span>
-    </div>
-  );
-}
-
 function getSourceLabel(source: CapabilityBoardItem['source']): string {
   if (source === 'cat-cafe') return '官方';
   if (source === 'external') return '三方';
@@ -127,6 +111,8 @@ export function CapabilitySection({
   headerSlot,
   headerSlotClassName,
   titleActionSlot,
+  showWhenEmpty,
+  emptyState,
   items,
   catFamilies,
   toggling,
@@ -140,6 +126,8 @@ export function CapabilitySection({
   headerSlot?: ReactNode;
   headerSlotClassName?: string;
   titleActionSlot?: ReactNode;
+  showWhenEmpty?: boolean;
+  emptyState?: ReactNode;
   items: CapabilityBoardItem[];
   catFamilies: CatFamily[];
   toggling: string | null;
@@ -147,7 +135,7 @@ export function CapabilitySection({
   onUninstall?: (id: string) => void;
   hideSkillMountStatus?: boolean;
 }) {
-  if (items.length === 0) return null;
+  if (items.length === 0 && !showWhenEmpty) return null;
 
   return (
     <div className="mb-6 pt-6">
@@ -158,24 +146,28 @@ export function CapabilitySection({
         </div>
         {headerSlot ? <div className={headerSlotClassName ?? 'mt-3'}>{headerSlot}</div> : null}
       </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <CapabilityCard
-            key={`${item.type}:${item.id}`}
-            item={item}
-            catFamilies={catFamilies}
-            toggling={toggling}
-            onToggle={onToggle}
-            onUninstall={onUninstall}
-            hideSkillMountStatus={_hideSkillMountStatus}
-          />
-        ))}
-      </div>
+      {items.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <CapabilityCard
+              key={`${item.type}:${item.id}`}
+              item={item}
+              catFamilies={catFamilies}
+              toggling={toggling}
+              onToggle={onToggle}
+              onUninstall={onUninstall}
+              hideSkillMountStatus={_hideSkillMountStatus}
+            />
+          ))}
+        </div>
+      ) : (
+        (emptyState ?? null)
+      )}
     </div>
   );
 }
 
-function CapabilityCard({
+export function CapabilityCard({
   item,
   catFamilies: _catFamilies,
   toggling,
@@ -197,14 +189,19 @@ function CapabilityCard({
 
   return (
     <div
-      className="ui-card group flex min-h-[194px] flex-col gap-4 p-5"
+      className="ui-card ui-card-hover group flex min-h-[194px] flex-col gap-4 p-5"
       data-testid={`capability-card-${item.type}-${item.id}`}
     >
       <div className="flex items-start gap-3">
-        <SkillArtwork name={item.id} />
+        <NameInitialIcon name={item.id} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
-            <h3 className="truncate text-base font-semibold text-[var(--text-primary)]">{item.id}</h3>
+            <OverflowTooltip
+              content={item.id}
+              className="min-w-0 flex-1"
+              as="h3"
+              textClassName="block truncate text-base font-semibold text-[var(--text-primary)]"
+            />
             {item.connectionStatus ? <StatusDot status={item.connectionStatus} /> : null}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
@@ -213,12 +210,9 @@ function CapabilityCard({
         </div>
       </div>
 
-      <p
-        className="line-clamp-2 min-h-[44px] text-sm leading-6 text-[var(--text-secondary)]"
-        title={resolvedDescription}
-      >
-        {resolvedDescription}
-      </p>
+      <InfoTooltip content={resolvedDescription} className="w-full">
+        <p className="line-clamp-2 min-h-[44px] text-sm leading-6 text-[var(--text-secondary)]">{resolvedDescription}</p>
+      </InfoTooltip>
 
       <div className="mt-auto flex items-end justify-between gap-3">
         <div className="min-h-5 text-xs leading-5">
@@ -235,7 +229,7 @@ function CapabilityCard({
                 }}
                 className="absolute left-0 top-0 opacity-0 text-[14px] font-bold text-[var(--text-accent)] transition-opacity duration-200 hover:underline group-hover:opacity-100"
               >
-                删除
+                卸载
               </button>
             </div>
           ) : (

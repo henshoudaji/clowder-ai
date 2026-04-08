@@ -28,6 +28,7 @@ Supported intent types (see ``IntentType`` for details):
 """
 import asyncio
 import json
+from jiuwenclaw.utils import fix_json_arguments
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List
 

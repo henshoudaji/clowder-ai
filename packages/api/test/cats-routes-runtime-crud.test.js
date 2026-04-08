@@ -624,8 +624,8 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const projectRoot = createProjectRootFromRepoTemplate();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
-    mkdirSync(join(projectRoot, 'vendor', 'agent-teams'), { recursive: true });
-    writeFileSync(join(projectRoot, 'vendor', 'agent-teams', 'agent-teams.exe'), '', 'utf8');
+    mkdirSync(join(projectRoot, 'vendor', 'relay-teams'), { recursive: true });
+    writeFileSync(join(projectRoot, 'vendor', 'relay-teams', 'relay-teams.exe'), '', 'utf8');
 
     const { createProviderProfile } = await import('../dist/config/provider-profiles.js');
     const openAiProfile = await createProviderProfile(projectRoot, {
@@ -656,14 +656,14 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
       body: JSON.stringify({
         accountRef: openAiProfile.id,
         defaultModel: 'gpt-5.4',
-        embeddedAcpExecutablePath: 'vendor/agent-teams/agent-teams.exe',
+        embeddedAcpExecutablePath: 'vendor/relay-teams/relay-teams.exe',
         embeddedAcpConfig: {
-          executablePath: 'vendor/agent-teams/agent-teams.exe',
+          executablePath: 'vendor/relay-teams/relay-teams.exe',
           args: ['--trace', 'gateway', 'acp', 'stdio'],
-          cwd: 'vendor/agent-teams',
+          cwd: 'vendor/relay-teams',
           env: {
             ACP_TRACE_STDIO: '1',
-            AGENT_TEAMS_LOG_LEVEL: 'debug',
+            RELAY_TEAMS_LOG_LEVEL: 'debug',
           },
         },
       }),
@@ -673,14 +673,14 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const patchBody = JSON.parse(patchRes.body);
     assert.equal(patchBody.cat.id, 'agentteams');
     assert.equal(patchBody.cat.accountRef, openAiProfile.id);
-    assert.equal(patchBody.cat.embeddedAcpExecutablePath, 'vendor/agent-teams/agent-teams.exe');
+    assert.equal(patchBody.cat.embeddedAcpExecutablePath, 'vendor/relay-teams/relay-teams.exe');
     assert.deepEqual(patchBody.cat.embeddedAcpConfig, {
-      executablePath: 'vendor/agent-teams/agent-teams.exe',
+      executablePath: 'vendor/relay-teams/relay-teams.exe',
       args: ['--trace', 'gateway', 'acp', 'stdio'],
-      cwd: 'vendor/agent-teams',
+      cwd: 'vendor/relay-teams',
       env: {
         ACP_TRACE_STDIO: '1',
-        AGENT_TEAMS_LOG_LEVEL: 'debug',
+        RELAY_TEAMS_LOG_LEVEL: 'debug',
       },
     });
 
@@ -689,14 +689,14 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const listBody = JSON.parse(listRes.body);
     const agentTeams = listBody.cats.find((cat) => cat.id === 'agentteams');
     assert.ok(agentTeams, 'agentteams should appear in /api/cats');
-    assert.equal(agentTeams.embeddedAcpExecutablePath, 'vendor/agent-teams/agent-teams.exe');
+    assert.equal(agentTeams.embeddedAcpExecutablePath, 'vendor/relay-teams/relay-teams.exe');
     assert.deepEqual(agentTeams.embeddedAcpConfig, {
-      executablePath: 'vendor/agent-teams/agent-teams.exe',
+      executablePath: 'vendor/relay-teams/relay-teams.exe',
       args: ['--trace', 'gateway', 'acp', 'stdio'],
-      cwd: 'vendor/agent-teams',
+      cwd: 'vendor/relay-teams',
       env: {
         ACP_TRACE_STDIO: '1',
-        AGENT_TEAMS_LOG_LEVEL: 'debug',
+        RELAY_TEAMS_LOG_LEVEL: 'debug',
       },
     });
   });

@@ -227,17 +227,15 @@ export function parseGithubReviewSubject(subject: string): ParsedGithubReviewMai
 }
 
 /**
- * Extract cat name from PR title.
- * Supports two signature formats (per CLAUDE.md 签名规范):
- * - Breed name: "[布偶猫🐾]", "[缅因猫🐾]", "[暹罗猫🐾]"
- * - Nickname:   "[宪宪/Opus-46🐾]", "[砚砚/Codex🐾]", "[烁烁🐾]", "[Spark🐾]"
+ * Extract agent name from PR title.
+ * Supports legacy 🐾 signature format for backward compatibility.
  */
 export type CatTag = '布偶猫' | '缅因猫' | '暹罗猫';
 
-// Match any [...🐾] tag and capture the inner text before the paw emoji
+// Match any [...🐾] tag and capture the inner text (legacy format)
 const CAT_TAG_REGEX = /\[([^\]]+?)🐾\]/;
 
-// Nickname prefix → breed mapping (CLAUDE.md 猫猫花名册)
+// Nickname prefix → breed mapping (legacy)
 const NICKNAME_TO_BREED: Record<string, CatTag> = {
   布偶猫: '布偶猫',
   缅因猫: '缅因猫',

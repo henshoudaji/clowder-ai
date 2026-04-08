@@ -1,10 +1,12 @@
 ﻿Unicode True
 RequestExecutionLevel user
+ManifestDPIAware true
 SetCompress off
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "nsDialogs.nsh"
+!include "WinMessages.nsh"
 
 ; --------------- Visual assets ---------------
 ; Place these files under packaging\windows\assets\:
@@ -14,8 +16,8 @@ SetCompress off
 !define MUI_ICON   "${ASSETS_DIR}\app.ico"
 !define MUI_UNICON "${ASSETS_DIR}\app.ico"
 
-; Font size setting (use default system font for compatibility)
-SetFont "MS Shell Dlg" 10
+; Font size setting (use Segoe UI for clearer Win11/DPI rendering)
+SetFont "Segoe UI" 9
 
 ; --------------- Abort warning ---------------
 !define MUI_ABORTWARNING
@@ -93,6 +95,9 @@ Function FinishPageCreate
   ${If} $FinishDialog == error
     Abort
   ${EndIf}
+
+  GetDlgItem $0 $HWNDPARENT 1
+  SendMessage $0 ${WM_SETTEXT} 0 "STR:完成"
 
   ${NSD_CreateLabel} 0 0 100% 60% "${APP_NAME} 已成功安装到您的计算机。$\r$\n$\r$\n点击「完成」退出安装向导。"
   Pop $0
@@ -254,15 +259,43 @@ Section "Install"
   IfFileExists "$INSTDIR\cat-config.json" +2 0
     CopyFiles /SILENT "$INSTDIR\installer-seed\cat-config.json" "$INSTDIR\cat-config.json"
 
+  ; 检查并安装 WebView2 运行时
+  DetailPrint "正在检查 WebView2 运行时..."
+  ; 检查 HKLM (per-machine) 注册表
+  ReadRegStr $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+  StrCmp $0 "" 0 webview2_installed
+  
+  ; 检查 HKCU (per-user) 注册表
+  ReadRegStr $1 HKCU "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+  StrCmp $1 "" webview2_not_installed webview2_installed
+
+webview2_not_installed:
+  DetailPrint "正在安装 WebView2 运行时..."
+  ; 使用 /silent /install 参数静默安装
+  nsExec::ExecToLog '"$INSTDIR\tools\webview2\MicrosoftEdgeWebview2Setup.exe" /silent /install'
+  Pop $0
+  ; 验证安装结果
+  ReadRegStr $2 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+  StrCmp $2 "" webview2_install_failed webview2_installed
+
+webview2_install_failed:
+  DetailPrint "警告: WebView2 安装失败，桌面启动器可能无法使用"
+  Goto webview2_done
+
+webview2_installed:
+  StrCmp $0 "" webview2_check_hkcu webview2_found
+webview2_check_hkcu:
+  StrCmp $1 "" webview2_not_found webview2_found
+webview2_not_found:
+  DetailPrint "WebView2 未安装"
+  Goto webview2_done
+webview2_found:
+  DetailPrint "WebView2 已安装 (版本: $0$1)"
+webview2_done:
+
   ; Run post-install configuration (generate provider-profiles, cat-catalog, etc.)
   DetailPrint "正在初始化配置..."
   nsExec::ExecToLog '"$INSTDIR\tools\node\node.exe" "$INSTDIR\scripts\install-auth-config.mjs" modelarts-preset apply --project-dir "$INSTDIR"'
-  Pop $0
-
-  ; Add firewall rules so Windows does not prompt user when node.exe listens on a port
-  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${APP_NAME} Node.js"'
-  Pop $0
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${APP_NAME} Node.js" dir=in action=allow program="$INSTDIR\tools\node\node.exe" enable=yes profile=any'
   Pop $0
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -284,9 +317,7 @@ Section "Uninstall"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   DeleteRegKey HKCU "${INSTALL_KEY}"
 
-  ; Remove firewall rule
-  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${APP_NAME} Node.js"'
-  Pop $0
+  ; Skip firewall rule cleanup: user-level installs do not create the rule.
 
   ; Ask user whether to remove user data
   MessageBox MB_YESNO|MB_ICONQUESTION "是否同时删除所有用户数据？$\r$\n$\r$\n将删除：$\r$\n  · 安装目录下的配置、数据库、日志（.cat-cafe、data、logs、.env）$\r$\n  · 全局配置目录（$PROFILE\.cat-cafe）$\r$\n$\r$\n选择「否」将保留以上数据，但可能影响下次安装的配置初始化。" IDYES +3

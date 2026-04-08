@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 describe('appendThinkingChunk', () => {
   it('uses paragraph separators for non-streaming thinking blocks', async () => {
     const { appendThinkingChunk } = await import('../dist/domains/cats/services/agents/routing/thinking-chunk-merge.js');
-    assert.equal(appendThinkingChunk('step one', 'step two'), 'step one\n\n---\n\nstep two');
+    assert.equal(appendThinkingChunk('step one', 'step two'), 'step one\n\nstep two');
   });
 
   it('concatenates streaming thinking chunks when mergeStrategy=append', async () => {

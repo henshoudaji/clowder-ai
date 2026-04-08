@@ -65,7 +65,7 @@ export function BrowserToolbar({
             if (e.key === 'Enter') onNavigate();
           }}
           placeholder="localhost:3000"
-          className="w-full px-2 py-1 text-xs rounded border border-[#FFDDD2] bg-white focus:outline-none focus:border-[#E29578] placeholder:text-[#5a4a42]/30"
+          className="ui-input ui-input-soft w-full px-2 py-1 text-xs rounded"
         />
       </div>
 

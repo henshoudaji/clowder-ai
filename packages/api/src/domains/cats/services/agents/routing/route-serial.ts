@@ -481,9 +481,6 @@ export async function* routeSerial(
 
         if (msg.type === 'error') {
           hadError = true;
-          if (msg.error) {
-            textContent += `${textContent ? '\n\n' : ''}[错误] ${msg.error}`;
-          }
         }
         // F070: done with errorCode (e.g. GOVERNANCE_BOOTSTRAP_REQUIRED) is an error
         // state — mark hadError so we don't fall through to silent_completion.

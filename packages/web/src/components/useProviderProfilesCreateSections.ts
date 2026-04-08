@@ -9,7 +9,7 @@ import type { AcpModelAccessMode, AcpModelProfileItem, AcpModelProviderType } fr
 
 type EditableAcpModelProvider = AcpModelProviderType | '';
 
-const DEFAULT_ACP_ARGS = '-m agent_teams gateway acp stdio';
+const DEFAULT_ACP_ARGS = '-m relay_teams gateway acp stdio';
 
 function resolveDefaultAcpCommand(projectPath: string | null): string {
   if (!projectPath) return 'tools/python/python.exe';
@@ -52,7 +52,7 @@ export function useProviderProfilesCreateSections(options: CreateSectionsOptions
       const normalizedPrev = prev.trim();
       if (
         normalizedPrev.length === 0 ||
-        normalizedPrev === 'agent-teams' ||
+        normalizedPrev === 'relay-teams' ||
         normalizedPrev === 'tools/python/python.exe' ||
         /[\\/]tools[\\/]python[\\/]python\.exe$/i.test(normalizedPrev)
       ) {
@@ -60,7 +60,7 @@ export function useProviderProfilesCreateSections(options: CreateSectionsOptions
       }
       return prev;
     });
-    setCreateAcpCwd((prev) => (prev === '/opt/workspace/agent-teams' ? '' : prev));
+    setCreateAcpCwd((prev) => (prev === '/opt/workspace/relay-teams' ? '' : prev));
   }, [options.mutationProjectPath]);
 
   const resetCreateProfileForm = useCallback(() => {

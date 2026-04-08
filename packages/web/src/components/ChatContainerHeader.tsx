@@ -7,7 +7,7 @@ interface ChatContainerHeaderProps {
   onToggleSidebar: () => void;
   threadId: string;
   authPendingCount: number;
-  targetCats: string[];
+  targetCats?: string[];
   viewMode: 'single' | 'split';
   onToggleViewMode: () => void;
   onOpenMobileStatus: () => void;
@@ -26,7 +26,7 @@ export function ChatContainerHeader({
   threadId: _threadId,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   authPendingCount: _authPendingCount,
-  targetCats,
+  targetCats = [],
   // F099/OQ-4: viewMode toggle hidden - candidate for removal (KD-7)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   viewMode: _viewMode,
@@ -42,7 +42,7 @@ export function ChatContainerHeader({
 
   return (
     <header className="safe-area-top relative h-0 overflow-visible">
-      <div className="absolute right-5 top-2 z-20 flex items-center gap-1">
+      <div className="absolute right-5 top-2 z-20 hidden items-center gap-1">
         {visibleCats.length > 0 && (
           <div className="mr-2 hidden items-center gap-2 md:flex">
             {visibleCats.map(({ id, cat }) => (
@@ -69,7 +69,7 @@ export function ChatContainerHeader({
           </svg>
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 hidden">
           <HubButton />
           <button
             type="button"

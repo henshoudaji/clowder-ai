@@ -64,7 +64,7 @@ export function SuggestionDecisionPanel({
             <input
               value={rejectNote}
               onChange={(event) => onChangeRejectNote(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#E6D7C3] px-2 py-1.5 text-xs text-[#2C241B]"
+              className="ui-input ui-input-soft mt-1 w-full rounded-lg px-2 py-1.5 text-xs"
               data-testid="mc-reject-note"
             />
           </label>

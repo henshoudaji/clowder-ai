@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AgentsPanel } from './AgentsPanelCopy';
+import { AgentsPanel } from './AgentsPanel';
 
 type RootTabKey = 'agents' | 'experts';
 

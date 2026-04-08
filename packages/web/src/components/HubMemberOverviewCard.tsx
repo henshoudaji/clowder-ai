@@ -87,6 +87,7 @@ function formatMentionPreview(patterns: string[], max = 3) {
 export function HubCoCreatorOverviewCard({ coCreator, onEdit }: { coCreator: CoCreatorConfig; onEdit?: () => void }) {
   const primary = coCreator.color?.primary ?? '#D4A76A';
   const avatarSrc = safeAvatarSrc(coCreator.avatar);
+  const cardClassName = onEdit ? 'ui-card-muted ui-card-hover px-[18px] py-[18px]' : 'ui-card-muted px-[18px] py-[18px]';
 
   return (
     <section
@@ -100,7 +101,7 @@ export function HubCoCreatorOverviewCard({ coCreator, onEdit }: { coCreator: CoC
           onEdit();
         }
       }}
-      className="ui-card-muted px-[18px] py-[18px]"
+      className={cardClassName}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
@@ -164,6 +165,7 @@ export function HubMemberOverviewCard({
 }) {
   const status = getStatusBadge(cat);
   const title = [cat.breedDisplayName ?? cat.displayName, cat.nickname].filter(Boolean).join(' · ');
+  const cardClassName = onEdit ? 'ui-card ui-card-hover px-[18px] py-[18px]' : 'ui-card px-[18px] py-[18px]';
 
   return (
     <section
@@ -177,7 +179,7 @@ export function HubMemberOverviewCard({
           onEdit(cat);
         }
       }}
-      className="ui-card px-[18px] py-[18px] transition-colors hover:border-[var(--border-accent)]"
+      className={cardClassName}
     >
       <div className="flex items-start justify-between gap-3">
         <div>

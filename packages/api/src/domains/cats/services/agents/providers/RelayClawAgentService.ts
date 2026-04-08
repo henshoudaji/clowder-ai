@@ -7,7 +7,7 @@
  * - request/response streaming
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { CatId, RelayClawAgentConfig } from '@cat-cafe/shared';
 import { createCatId } from '@cat-cafe/shared';
@@ -42,6 +42,22 @@ export interface RelayClawAgentServiceDeps {
 
 function agentMsg(type: AgentMessage['type'], catId: CatId, content?: string): AgentMessage {
   return { type, catId, content, timestamp: Date.now() };
+}
+
+function resolveRelayClawSessionId(channelId: string, options?: AgentServiceOptions): string {
+  const existingSessionId = options?.cliSessionId?.trim() || options?.sessionId?.trim();
+  if (existingSessionId) return existingSessionId;
+
+  const auditContext = options?.auditContext;
+  if (auditContext?.threadId && auditContext.userId && auditContext.catId) {
+    const digest = createHash('sha256')
+      .update(`${auditContext.userId}\n${auditContext.catId}\n${auditContext.threadId}`)
+      .digest('hex')
+      .slice(0, 24);
+    return `${channelId}_${digest}`;
+  }
+
+  return `${channelId}_${Date.now().toString(16)}_${randomUUID().slice(0, 12)}`;
 }
 
 function buildRelayClawFilesPayload(
@@ -79,7 +95,9 @@ export class RelayClawAgentService implements AgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const signal = buildSignal(this.config.timeoutMs ?? DEFAULT_RELAYCLAW_TIMEOUT_MS, options?.signal);
-    yield agentMsg('session_init', this.catId);
+    const channelId = this.config.channelId ?? 'catcafe';
+    const sessionId = resolveRelayClawSessionId(channelId, options);
+    yield { type: 'session_init', catId: this.catId, sessionId, timestamp: Date.now() };
 
     try {
       await this.ensureConnected(signal, options);
@@ -100,7 +118,7 @@ export class RelayClawAgentService implements AgentService {
     signal.addEventListener('abort', onAbort, { once: true });
 
     try {
-      this.connection.send(buildRequest(requestId, this.config.channelId ?? 'catcafe', prompt, options));
+      this.connection.send(buildRequest(requestId, channelId, sessionId, prompt, options));
       yield* this.consumeFrames(queue, signal, options?.signal);
     } catch (err) {
       if (options?.signal?.aborted) {
@@ -238,17 +256,20 @@ function computeFinalTextDelta(streamedText: string, finalText: string): string 
 function buildRequest(
   requestId: string,
   channelId: string,
+  sessionId: string,
   prompt: string,
   options?: AgentServiceOptions,
 ): Record<string, unknown> {
   const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
+  const systemPrompt = typeof options?.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
   return {
     request_id: requestId,
     channel_id: channelId,
-    session_id: `${channelId}_${Date.now().toString(16)}_${randomUUID().slice(0, 12)}`,
+    session_id: sessionId,
     req_method: 'chat.send',
     params: {
       query: appendLocalImagePathHints(prompt, imagePaths),
+      ...(systemPrompt ? { system_prompt: systemPrompt } : {}),
       mode: 'agent',
       ...(options?.workingDirectory ? { project_dir: options.workingDirectory } : {}),
       ...(buildRelayClawFilesPayload(options?.contentBlocks, options?.uploadDir)

@@ -547,6 +547,7 @@ function applyModelartsPreset(projectDir, apiKey) {
   const catalog = {
     version: 2,
     preset: true,
+    defaultCatId: preset.members[0]?.catId,
     coCreator: template.coCreator,
     reviewPolicy: template.reviewPolicy,
     roster,
@@ -559,7 +560,7 @@ function applyModelartsPreset(projectDir, apiKey) {
   };
   writeCatalog(projectDir, catalog);
 
-  // Create ACP provider profiles for agent-teams members (write directly to
+  // Create ACP provider profiles for relay-teams members (write directly to
   // avoid normalizeProfilesFile stripping ACP-specific fields like command)
   for (const member of preset.members) {
     if (member.provider !== 'acp') continue;
@@ -580,7 +581,7 @@ function applyModelartsPreset(projectDir, apiKey) {
       builtin: false,
       protocol: 'acp',
       command: acpCommand,
-      args: ['-m', 'agent_teams', 'gateway', 'acp', 'stdio'],
+      args: ['-m', 'relay_teams', 'gateway', 'acp', 'stdio'],
       modelAccessMode: 'clowder_default_profile',
       defaultModelProfileRef: acpModelProfileId,
       createdAt: now,

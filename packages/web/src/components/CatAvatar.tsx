@@ -11,9 +11,10 @@ interface CatAvatarProps {
   catId: string;
   size?: number;
   status?: CatStatus;
+  showRing?: boolean;
 }
 
-export function CatAvatar({ catId, size = 32, status }: CatAvatarProps) {
+export function CatAvatar({ catId, size = 32, status, showRing = true }: CatAvatarProps) {
   const [imgError, setImgError] = useState(false);
   const { getCatById } = useCatData();
   const cat = getCatById(catId);
@@ -25,7 +26,9 @@ export function CatAvatar({ catId, size = 32, status }: CatAvatarProps) {
 
   return (
     <div
-      className={`answer-avatar rounded-full ring-2 overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center transition-shadow duration-300 ${
+      className={`answer-avatar rounded-full overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center transition-shadow duration-300 ${
+        showRing ? 'ring-2 ' : ''
+      }${
         isStreaming ? 'animate-pulse' : ''
       }`}
       style={{
@@ -34,16 +37,16 @@ export function CatAvatar({ catId, size = 32, status }: CatAvatarProps) {
         ['--tw-ring-color' as string]: isError ? '#ef4444' : ringColor,
         boxShadow: glowShadow,
       }}
-    >
-      {imgError ? (
-        <PawIcon className="w-4 h-4 text-gray-400" />
+      >
+        {imgError ? (
+        <PawIcon className="ui-avatar-fallback-icon text-gray-400" />
       ) : (
         <img
           src={cat?.avatar ?? `/avatars/${catId}.png`}
           alt={cat?.displayName ?? catId}
           width={size}
           height={size}
-          className="object-cover"
+          className="ui-avatar-image"
           onError={() => setImgError(true)}
         />
       )}

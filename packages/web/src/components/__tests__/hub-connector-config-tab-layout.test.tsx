@@ -5,7 +5,23 @@ import { HubConnectorConfigTab } from '@/components/HubConnectorConfigTab';
 import { apiFetch } from '@/utils/api-client';
 
 vi.mock('@/utils/api-client', () => ({ apiFetch: vi.fn() }));
-vi.mock('@/components/WeixinQrPanel', () => ({ WeixinQrPanel: () => React.createElement('div', { 'data-testid': 'weixin-qr' }) }));
+vi.mock('@/components/WeixinQrPanel', () => ({
+  WeixinQrPanel: ({
+    configured,
+    onConfigured,
+  }: {
+    configured: boolean;
+    onConfigured?: () => void | Promise<void>;
+  }) => React.createElement(
+    'button',
+    {
+      'data-testid': 'weixin-qr',
+      'data-configured': configured ? 'true' : 'false',
+      onClick: () => void onConfigured?.(),
+    },
+    configured ? 'connected' : 'idle',
+  ),
+}));
 
 const mockApiFetch = vi.mocked(apiFetch);
 
@@ -107,5 +123,46 @@ describe('HubConnectorConfigTab layout', () => {
     expect(container.querySelector('[data-testid="weixin-qr"]')).not.toBeNull();
     expect(container.querySelector('input[data-testid="field-SLACK_TOKEN"]')).toBeNull();
   });
-});
 
+  it('refreshes platform status after Weixin QR panel reports configuration success', async () => {
+    let statusCallCount = 0;
+    mockApiFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/connector/status') {
+        statusCallCount += 1;
+        return Promise.resolve(
+          jsonResponse({
+            platforms: [
+              {
+                id: 'weixin',
+                name: '微信',
+                nameEn: 'WeChat',
+                configured: statusCallCount > 1,
+                docsUrl: '',
+                steps: ['扫码绑定', '完成确认'],
+                fields: [],
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    await act(async () => {
+      root.render(React.createElement(HubConnectorConfigTab));
+    });
+    await flushEffects();
+
+    const weixinItem = container.querySelector('[data-testid="platform-item-weixin"]');
+    expect(weixinItem?.textContent).toContain('未配置');
+
+    await act(async () => {
+      (container.querySelector('[data-testid="weixin-qr"]') as HTMLButtonElement | null)?.click();
+    });
+    await flushEffects();
+
+    expect(statusCallCount).toBeGreaterThanOrEqual(2);
+    expect(container.querySelector('[data-testid="platform-item-weixin"]')?.textContent).toContain('已配置');
+  });
+});

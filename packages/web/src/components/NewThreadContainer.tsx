@@ -1,13 +1,14 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useSendMessage, type WhisperOptions } from '@/hooks/useSendMessage';
+import { useSocket } from '@/hooks/useSocket';
 import type { DeliveryMode } from '@/stores/chat-types';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
-import { AgentsRootPanel } from './AgentsRootPanel';
+import { AgentsPanel } from './AgentsPanel';
 import { ChannelsPanel } from './ChannelsPanel';
 import { ChatEmptyState } from './ChatEmptyState';
 import { ChatInput } from './ChatInput';
@@ -19,10 +20,11 @@ import { ResizeHandle } from './workspace/ResizeHandle';
 
 const HOME_DRAFT_THREAD_ID = '__new__';
 const SIDEBAR_DEFAULT = 240;
+const MAIN_PANEL_MIN_WIDTH = 900;
 
 function getFolderNameFromPath(path: string): string {
   const normalized = path.replace(/[\\/]+$/, '');
-  const segments = normalized.split(/[/\\]/).filter(Boolean);
+  const segments = normalized.split(/[\/\\]/).filter(Boolean);
   return segments[segments.length - 1] ?? normalized;
 }
 
@@ -39,7 +41,6 @@ export function NewThreadContainer() {
   const clearPendingNewThreadSend = useChatStore((s) => s.clearPendingNewThreadSend);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMenu, setSidebarMenu] = useState<'chat' | 'models' | 'agents' | 'channels' | 'skills'>('chat');
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false);
   const [cwdPath, setCwdPath] = useState<string | null>(null);
@@ -50,6 +51,18 @@ export function NewThreadContainer() {
     'cat-cafe:sidebarWidth',
     SIDEBAR_DEFAULT,
   );
+  const socketCallbacks = useMemo(
+    () => ({
+      onMessage: () => {},
+      onThreadCreated: () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('cat-cafe:threads-refresh'));
+        }
+      },
+    }),
+    [],
+  );
+  useSocket(socketCallbacks);
 
   const handleFolderSelect = useCallback((path: string) => {
     setSelectedFolderPath(path);
@@ -75,9 +88,12 @@ export function NewThreadContainer() {
   }, []);
 
   useEffect(() => {
-    if (typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 768px)').matches) {
-      setSidebarOpen(true);
-    }
+    const handler = (event: Event) => {
+      const menu = (event as CustomEvent<{ menu?: 'skills' }>).detail?.menu;
+      if (menu === 'skills') setSidebarMenu('skills');
+    };
+    window.addEventListener('cat-cafe:open-sidebar-menu', handler);
+    return () => window.removeEventListener('cat-cafe:open-sidebar-menu', handler);
   }, []);
 
   const handleSidebarResize = useCallback(
@@ -119,6 +135,7 @@ export function NewThreadContainer() {
         if (!thread?.id) {
           throw new Error('Failed to create thread');
         }
+
         attachPendingNewThreadTarget(thread.id);
         router.push(`/thread/${thread.id}`);
       } catch (err) {
@@ -139,71 +156,62 @@ export function NewThreadContainer() {
   );
 
   return (
-    <div className="ui-shell-surface flex h-screen h-dvh">
-      {sidebarOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-20 bg-black/30 md:hidden"
-            onClick={() => setSidebarOpen(false)}
-            aria-hidden="true"
-          />
-          <div
-            className="fixed inset-y-0 left-0 z-30 flex-shrink-0 md:static md:z-auto"
-            style={{ width: sidebarWidth }}
-          >
-            <ThreadSidebar
-              onClose={() => setSidebarOpen(false)}
-              className="w-full"
-              onMenuClick={(menu) => setSidebarMenu(menu)}
-              onNewChatClick={() => {
-                setSidebarMenu('chat');
-                setCurrentThread('default');
-              }}
-              activeMenu={sidebarMenu === 'chat' ? undefined : sidebarMenu}
-            />
-          </div>
-          <div className="hidden items-center md:flex">
-            <ResizeHandle direction="horizontal" onResize={handleSidebarResize} onDoubleClick={resetSidebarWidth} />
-          </div>
-        </>
-      )}
+    <div className="ui-shell-surface flex h-screen h-dvh overflow-hidden">
+      <div className="z-30 h-full flex-shrink-0" style={{ width: sidebarWidth }}>
+        <ThreadSidebar
+          className="w-full"
+          onMenuClick={(menu) => setSidebarMenu(menu)}
+          onNewChatClick={() => {
+            setSidebarMenu('chat');
+            setCurrentThread('default');
+          }}
+          activeMenu={sidebarMenu === 'chat' ? undefined : sidebarMenu}
+        />
+      </div>
+      <div className="hidden items-center md:flex">
+        <ResizeHandle direction="horizontal" onResize={handleSidebarResize} onDoubleClick={resetSidebarWidth} />
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-1 relative overflow-hidden">
-          {sidebarMenu !== 'chat' && (
-            <div className="ui-shell-surface h-full overflow-hidden px-8 pt-12 pb-5">
-              {sidebarMenu === 'models' && <ModelsPanel />}
-              {sidebarMenu === 'agents' && <AgentsRootPanel />}
-              {sidebarMenu === 'channels' && <ChannelsPanel />}
-              {sidebarMenu === 'skills' && <SkillsPanel />}
-            </div>
-          )}
+      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+        <div className="flex h-full min-w-0 flex-col" style={{ minWidth: MAIN_PANEL_MIN_WIDTH }}>
+          <div className="relative flex-1 overflow-hidden">
+            {sidebarMenu !== 'chat' && (
+              <div className="ui-shell-surface h-full overflow-hidden px-8 pt-12 pb-5">
+                {sidebarMenu === 'models' && <ModelsPanel />}
+                {sidebarMenu === 'agents' && <AgentsPanel />}
+                {sidebarMenu === 'channels' && <ChannelsPanel />}
+                {sidebarMenu === 'skills' && <SkillsPanel />}
+              </div>
+            )}
+            {sidebarMenu === 'chat' && (
+              <main className="ui-shell-surface flex h-full flex-col overflow-y-auto p-4" data-testid="new-thread-main">
+                <div className="flex-1">
+                  <ChatEmptyState
+                    bootcampCount={0}
+                    isCurrentBootcampThread={false}
+                    onOpenBootcampList={() => {}}
+                    onAgentsClick={() => setSidebarMenu('agents')}
+                    onChannelsClick={() => setSidebarMenu('channels')}
+                  />
+                </div>
+              </main>
+            )}
+          </div>
+
           {sidebarMenu === 'chat' && (
-            <main className="ui-shell-surface flex-1 overflow-y-auto p-4" data-testid="new-thread-main">
-              <ChatEmptyState
-                bootcampCount={0}
-                isCurrentBootcampThread={false}
-                onOpenBootcampList={() => {}}
-                onAgentsClick={() => setSidebarMenu('agents')}
-                onChannelsClick={() => setSidebarMenu('channels')}
-              />
-            </main>
+            <ChatInput
+              threadId={HOME_DRAFT_THREAD_ID}
+              onSend={handleSend}
+              disabled={isCreatingThread}
+              folderSelectionEnabled
+              selectedFolderName={selectedFolderName}
+              selectedFolderTitle={selectedFolderTitle}
+              onOpenFolderPicker={() => {
+                void handleOpenFolderPicker();
+              }}
+            />
           )}
         </div>
-
-        {sidebarMenu === 'chat' && (
-          <ChatInput
-            threadId={HOME_DRAFT_THREAD_ID}
-            onSend={handleSend}
-            disabled={isCreatingThread}
-            folderSelectionEnabled
-            selectedFolderName={selectedFolderName}
-            selectedFolderTitle={selectedFolderTitle}
-            onOpenFolderPicker={() => {
-              void handleOpenFolderPicker();
-            }}
-          />
-        )}
       </div>
 
       <DirectoryBrowserModal

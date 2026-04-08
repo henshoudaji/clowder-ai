@@ -91,21 +91,21 @@ export function RefluxCapture({ projectId, patterns, onUpdate }: RefluxCapturePr
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="标题"
-            className="w-full rounded border border-[#E7DAC7] bg-white px-2 py-1.5 text-xs text-[#2B2118]"
+            className="ui-input ui-input-soft w-full rounded px-2 py-1.5 text-xs"
           />
           <textarea
             value={insight}
             onChange={(e) => setInsight(e.target.value)}
             placeholder="Insight..."
             rows={3}
-            className="w-full rounded border border-[#E7DAC7] bg-white px-2 py-1.5 text-xs text-[#2B2118]"
+            className="ui-textarea ui-textarea-soft w-full rounded px-2 py-1.5 text-xs"
           />
           <textarea
             value={evidence}
             onChange={(e) => setEvidence(e.target.value)}
             placeholder="Evidence..."
             rows={2}
-            className="w-full rounded border border-[#E7DAC7] bg-white px-2 py-1.5 text-xs text-[#2B2118]"
+            className="ui-textarea ui-textarea-soft w-full rounded px-2 py-1.5 text-xs"
           />
           <button
             type="button"

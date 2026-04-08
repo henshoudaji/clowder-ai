@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from jiuwenclaw.utils import fix_json_arguments
 from typing import List, Any, Union, Optional, Tuple, Dict
 from pydantic import BaseModel
 
@@ -276,15 +277,8 @@ class AbilityManager:
         result, error_msg = None, None
         tool_name = tool_call.name
 
-        # Parse arguments
-        try:
-            tool_args = (
-                json.loads(tool_call.arguments)
-                if isinstance(tool_call.arguments, str)
-                else tool_call.arguments
-            )
-        except (json.JSONDecodeError, AttributeError):
-            tool_args = {}
+        # Parse arguments (with JSON fix)
+        tool_args = fix_json_arguments(tool_call.arguments)
 
         # Check ability type and execute accordingly
         if tool_name in self._tools:

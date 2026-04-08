@@ -127,6 +127,11 @@ internal sealed class LauncherForm : Form
     private readonly string _projectRoot;
     private readonly string _logFilePath;
     private readonly string _runtimeStatePath;
+    private const float SplashStatusAnchorX = 0.5f;
+    private const float SplashStatusAnchorY = 0.8f;
+    private const float SplashStatusBaseFontSize = 22f;
+    private const float SplashStatusMinScale = 0.75f;
+    private const float SplashStatusMaxScale = 1.35f;
     private Process _serviceHostProcess;
     private bool _serviceStartedByLauncher;
     private bool _exitRequested;
@@ -135,7 +140,7 @@ internal sealed class LauncherForm : Form
     private bool _hasTrayRestorePlacement;
     private WINDOWPLACEMENT _trayRestorePlacement;
     private string _frontendUrl;
-    private string _statusText = "Preparing OfficeClaw...";
+    private string _statusText = "加载中...";
     private int _spinnerAngle;
     private WebView2 _webView;
     private Image _splashImage;
@@ -183,7 +188,7 @@ internal sealed class LauncherForm : Form
 
         _statusPanel = new DoubleBufferedPanel
         {
-            Height = 60,
+            Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
         };
         _statusPanel.Paint += OnStatusPanelPaint;
@@ -200,6 +205,7 @@ internal sealed class LauncherForm : Form
         _spinnerTimer.Start();
 
         _splashBox.Controls.Add(_statusPanel);
+        _statusPanel.BringToFront();
         _splashBox.Resize += (_, __) =>
         {
             RepositionStatusLabel();
@@ -789,7 +795,7 @@ internal sealed class LauncherForm : Form
             return;
         }
 
-        _statusText = message;
+        _statusText = "加载中...";
         _statusPanel.Invalidate();
         AppendLog(message);
     }
@@ -808,15 +814,45 @@ internal sealed class LauncherForm : Form
 
     private void RepositionStatusLabel()
     {
-        if (_splashBox == null || _splashBox.IsDisposed)
+        if (_statusPanel == null || _statusPanel.IsDisposed)
         {
             return;
         }
 
-        var parent = _splashBox.ClientSize;
-        _statusPanel.Width = parent.Width;
-        _statusPanel.Left = 0;
-        _statusPanel.Top = parent.Height - _statusPanel.Height - 40;
+        _statusPanel.Invalidate();
+    }
+
+    private RectangleF GetSplashImageBounds(Size canvas)
+    {
+        if (_splashImage == null || canvas.Width <= 0 || canvas.Height <= 0)
+        {
+            return RectangleF.Empty;
+        }
+
+        var img = _splashImage;
+        float scale = Math.Max(
+            (float)canvas.Width / img.Width,
+            (float)canvas.Height / img.Height
+        );
+
+        float scaledW = img.Width * scale;
+        float scaledH = img.Height * scale;
+        float x = (canvas.Width - scaledW) / 2f;
+        float y = (canvas.Height - scaledH) / 2f;
+        return new RectangleF(x, y, scaledW, scaledH);
+    }
+
+    private float GetSplashOverlayScale(RectangleF imageBounds)
+    {
+        if (_splashImage == null || imageBounds.IsEmpty)
+        {
+            return 1f;
+        }
+
+        float scaleX = imageBounds.Width / _splashImage.Width;
+        float scaleY = imageBounds.Height / _splashImage.Height;
+        float scale = Math.Min(scaleX, scaleY);
+        return Math.Max(SplashStatusMinScale, Math.Min(SplashStatusMaxScale, scale));
     }
 
     private void OnSplashPaint(object sender, PaintEventArgs eventArgs)
@@ -826,60 +862,66 @@ internal sealed class LauncherForm : Form
             return;
         }
 
-        var img = _splashImage;
-        var canvas = ((Control)sender).ClientSize;
-
-        // "Cover" mode: scale to fill, crop the excess
-        float scale = Math.Max(
-            (float)canvas.Width / img.Width,
-            (float)canvas.Height / img.Height
-        );
-
-        int scaledW = (int)(img.Width * scale);
-        int scaledH = (int)(img.Height * scale);
-        int x = (canvas.Width - scaledW) / 2;
-        int y = (canvas.Height - scaledH) / 2;
+        var imageBounds = GetSplashImageBounds(((Control)sender).ClientSize);
+        if (imageBounds.IsEmpty)
+        {
+            return;
+        }
 
         eventArgs.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        eventArgs.Graphics.DrawImage(img, x, y, scaledW, scaledH);
+        eventArgs.Graphics.DrawImage(_splashImage, imageBounds);
     }
 
     private void OnStatusPanelPaint(object sender, PaintEventArgs eventArgs)
     {
+        if (_splashImage == null)
+        {
+            return;
+        }
+
         var panel = (Panel)sender;
         var g = eventArgs.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-        var font = new Font("Segoe UI", 14f, FontStyle.Regular);
-        var textSize = g.MeasureString(_statusText, font);
-
-        int spinnerSize = 24;
-        int gap = 10;
-        float totalWidth = spinnerSize + gap + textSize.Width;
-        float startX = (panel.Width - totalWidth) / 2f;
-        float centerY = (panel.Height - spinnerSize) / 2f;
-
-        // Match splash image text color: dark gray for text, orange for spinner
-        var spinnerColor = Color.FromArgb(255, 128, 0);   // orange, matching "OfficeClaw" title
-        var textColor = Color.FromArgb(51, 51, 51);       // #333, matching body text
-
-        // Draw spinner arc
-        using (var pen = new Pen(spinnerColor, 2.5f))
+        var imageBounds = GetSplashImageBounds(panel.ClientSize);
+        if (imageBounds.IsEmpty)
         {
-            pen.StartCap = LineCap.Round;
-            pen.EndCap = LineCap.Round;
-            g.DrawArc(pen, startX, centerY, spinnerSize, spinnerSize, _spinnerAngle, 270);
+            return;
         }
 
-        // Draw text
-        float textX = startX + spinnerSize + gap;
-        float textY = (panel.Height - textSize.Height) / 2f;
-        using (var brush = new SolidBrush(textColor))
-        {
-            g.DrawString(_statusText, font, brush, textX, textY);
-        }
+        float overlayScale = GetSplashOverlayScale(imageBounds);
+        float fontSize = SplashStatusBaseFontSize * overlayScale;
+        float spinnerSize = 24f * overlayScale;
+        float gap = 10f * overlayScale;
+        float strokeWidth = Math.Max(2f, 2.5f * overlayScale);
 
-        font.Dispose();
+        using (var font = new Font("Segoe UI", fontSize, FontStyle.Regular, GraphicsUnit.Pixel))
+        {
+            var textSize = g.MeasureString(_statusText, font);
+            float totalWidth = spinnerSize + gap + textSize.Width;
+            float anchorX = imageBounds.Left + imageBounds.Width * SplashStatusAnchorX;
+            float anchorY = imageBounds.Top + imageBounds.Height * SplashStatusAnchorY;
+            float startX = anchorX - totalWidth / 2f;
+            float spinnerY = anchorY - spinnerSize / 2f;
+            float textX = startX + spinnerSize + gap;
+            float textY = anchorY - textSize.Height / 2f;
+
+            var spinnerColor = Color.FromArgb(255, 128, 0);
+            var textColor = Color.FromArgb(51, 51, 51);
+
+            using (var pen = new Pen(spinnerColor, strokeWidth))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawArc(pen, startX, spinnerY, spinnerSize, spinnerSize, _spinnerAngle, 270);
+            }
+
+            using (var brush = new SolidBrush(textColor))
+            {
+                g.DrawString(_statusText, font, brush, textX, textY);
+            }
+        }
     }
 }
 

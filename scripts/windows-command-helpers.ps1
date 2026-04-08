@@ -25,8 +25,20 @@ function Get-ToolCommandCandidates {
     return @($candidates | Where-Object { $_ } | Select-Object -Unique)
 }
 
-function Test-ToolCommandCandidate {
+function Test-CommandPathExcluded {
     param([string]$Candidate)
+    if (-not $Candidate) {
+        return $true
+    }
+    $normalized = $Candidate.Replace('/', '\').ToLowerInvariant()
+    return $normalized.Contains('\microsoft\windowsapps\')
+}
+
+function Test-CommandPathUsable {
+    param([string]$Candidate)
+    if (Test-CommandPathExcluded -Candidate $Candidate) {
+        return $false
+    }
     try {
         & $Candidate "--version" 1>$null 2>$null
         $exitCode = $LASTEXITCODE
@@ -41,15 +53,23 @@ function Resolve-ToolCommand {
     param([string]$Name)
     foreach ($candidate in (Get-ToolCommandCandidates -Name $Name)) {
         if (Test-Path $candidate) {
-            if (Test-ToolCommandCandidate -Candidate $candidate) {
+            if (Test-CommandPathUsable -Candidate $candidate) {
                 Add-ProcessPathPrefix -Directory (Split-Path -Parent $candidate)
                 return $candidate
             }
         }
     }
     $toolCommand = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($toolCommand -and $toolCommand.Path) { return $toolCommand.Path }
-    if ($toolCommand -and $toolCommand.Source) { return $toolCommand.Source }
+    $resolvedPath = $null
+    if ($toolCommand -and $toolCommand.Path) {
+        $resolvedPath = $toolCommand.Path
+    } elseif ($toolCommand -and $toolCommand.Source) {
+        $resolvedPath = $toolCommand.Source
+    }
+    if ($resolvedPath -and (Test-CommandPathUsable -Candidate $resolvedPath)) {
+        Add-ProcessPathPrefix -Directory (Split-Path -Parent $resolvedPath)
+        return $resolvedPath
+    }
     return $null
 }
 

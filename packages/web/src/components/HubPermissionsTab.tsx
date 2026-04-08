@@ -186,13 +186,13 @@ export default function HubPermissionsTab() {
                     value={newGroupId}
                     onChange={(e) => setNewGroupId(e.target.value)}
                     placeholder="chat_id"
-                    className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-transparent"
+                    className="ui-input ui-input-plain flex-1 px-2 py-1.5 text-xs rounded-lg"
                   />
                   <input
                     value={newGroupLabel}
                     onChange={(e) => setNewGroupLabel(e.target.value)}
                     placeholder="群名（可选）"
-                    className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-transparent"
+                    className="ui-input ui-input-plain flex-1 px-2 py-1.5 text-xs rounded-lg"
                   />
                   <button
                     onClick={addGroup}
@@ -247,7 +247,7 @@ export default function HubPermissionsTab() {
                   value={newAdminId}
                   onChange={(e) => setNewAdminId(e.target.value)}
                   placeholder="open_id (ou_xxxx...)"
-                  className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-transparent"
+                  className="ui-input ui-input-plain flex-1 px-2 py-1.5 text-xs rounded-lg"
                   onKeyDown={(e) => e.key === 'Enter' && addAdmin()}
                 />
                 <button

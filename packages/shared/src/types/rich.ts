@@ -127,6 +127,10 @@ export interface RichFileBlock extends RichBlockBase {
   mimeType?: string;
   /** File size in bytes — informational */
   fileSize?: number;
+  /** Optional worktree context for opening local workspace files in the system app */
+  worktreeId?: string;
+  /** Optional workspace-relative path for local open/download actions */
+  workspacePath?: string;
 }
 
 /** F120 Phase C: Inline HTML/JS widget rendered in sandboxed iframe (srcdoc).

@@ -1,9 +1,13 @@
-﻿﻿'use client';
+﻿'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { buildNameInitialIconDataUrl } from '@/lib/name-initial-icon';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
+import { uploadAvatarAsset } from './hub-cat-editor.client';
 import { TagEditor } from './hub-tag-editor';
+import { NameInitialIcon } from './NameInitialIcon';
+import { InfoTooltip } from './InfoTooltip';
 import { useConfirm } from './useConfirm';
 
 const ADD_MODEL = '添加模型';
@@ -17,14 +21,43 @@ const DEFAULT_DESC =
   '专注于知识问答、内容创作等通用任务，可实现高性能与低成本的平衡，适用于智能客服、个性化推荐等场景。';
 const HUAWEI_MAAS_GROUP_LABEL = '华为云 MaaS';
 const CUSTOM_MODEL_GROUP_LABEL = '自定义模型';
-const DEFAULT_ICON = '/avatars/assistant.svg';
+const VENDOR_ICON = '/images/vendor.svg';
 const DEFAULT_DEVELOPER = '华为云 MaaS';
 const UNKNOWN_PROTOCOL_LABEL = 'unknown';
-const CREATE_MODEL_LABEL = '\u521b\u5efa\u6a21\u578b';
-const CREATE_MODEL_MODAL_TITLE = '\u521b\u5efa\u6a21\u578b';
-const CREATE_MODEL_CANCEL_LABEL = '\u53d6\u6d88';
-const CREATE_MODEL_CONFIRM_LABEL = '\u786e\u5b9a';
-const DELETE_MODEL_LABEL = '\u5220\u9664';
+const CREATE_MODEL_LABEL = '新建模型';
+const CREATE_MODEL_CANCEL_LABEL = '取消';
+const CREATE_MODEL_CONFIRM_LABEL = '确定';
+const DELETE_MODEL_LABEL = '删除';
+const MODEL_ICON_MAX_BYTES = 200 * 1024;
+const EMPTY_MODEL_ICON_DATA_URL =
+  'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2296%22%20height%3D%2296%22%20viewBox%3D%220%200%2096%2096%22%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2290%22%20height%3D%2290%22%20rx%3D%2245%22%20fill%3D%22%23F8FAFC%22%20stroke%3D%22%23CBD5E1%22%20stroke-width%3D%223%22%20stroke-dasharray%3D%226%206%22/%3E%3Cpath%20d%3D%22M48%2034v28M34%2048h28%22%20stroke%3D%22%2394A3B8%22%20stroke-width%3D%224%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E';
+
+function SparklesIcon() {
+  return (
+    <svg
+      className="mx-auto block h-[16px] w-[16px] text-[var(--text-accent)]"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 4.4L13.7 9.3L18.6 11L13.7 12.7L12 17.6L10.3 12.7L5.4 11L10.3 9.3L12 4.4Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17.8 5.7L18.2 6.8L19.3 7.2L18.2 7.6L17.8 8.7L17.4 7.6L16.3 7.2L17.4 6.8L17.8 5.7Z"
+        fill="currentColor"
+      />
+      <path
+        d="M6.2 15.6L6.45 16.3L7.15 16.55L6.45 16.8L6.2 17.5L5.95 16.8L5.25 16.55L5.95 16.3L6.2 15.6Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
 
 interface MassModelResponseItem {
   id?: string | number;
@@ -45,7 +78,7 @@ interface ModelCardData {
   description: string;
   labels: string[];
   developer: string;
-  icon: string;
+  icon?: string;
   protocol: string;
   [key: string]: unknown;
 }
@@ -54,6 +87,16 @@ interface ModelCardGroup {
   key: string;
   label: string;
   items: ModelCardData[];
+}
+
+interface ModelConfigProviderItem {
+  id: string;
+  displayName?: string;
+  description?: string;
+  icon?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  models?: string[];
 }
 
 function pickStringField(item: MassModelResponseItem, candidates: string[]): string | undefined {
@@ -76,7 +119,7 @@ function normalizeStringArray(value: unknown): string[] {
 
   if (typeof value === 'string' && value.trim()) {
     return value
-      .split(/[,\uff0c/|]/)
+      .split(/[,，/|]/)
       .map((entry) => entry.trim())
       .filter(Boolean);
   }
@@ -111,7 +154,7 @@ function normalizeModel(item: MassModelResponseItem, index: number): ModelCardDa
   const labels = normalizeStringArray(item.labels || []);
   const developer =
     pickStringField(item, ['developer', 'provider', 'vendor', 'publisher', 'company']) ?? DEFAULT_DEVELOPER;
-  const icon = pickStringField(item, ['icon', 'logo', 'image', 'avatar']) ?? DEFAULT_ICON;
+  const icon = pickStringField(item, ['icon', 'logo', 'image', 'avatar']);
   const protocol = pickStringField(item, ['protocol']) ?? UNKNOWN_PROTOCOL_LABEL;
 
   return {
@@ -177,20 +220,27 @@ export function ModelsPanel() {
   const [createModelError, setCreateModelError] = useState<string | null>(null);
   const [createModelBusy, setCreateModelBusy] = useState(false);
   const [modelNameInput, setModelNameInput] = useState('');
+  const [modelDescriptionInput, setModelDescriptionInput] = useState('');
+  const [modelIconInput, setModelIconInput] = useState('');
+  const [modelIconUploading, setModelIconUploading] = useState(false);
   const [modelDisplayNameInput, setModelDisplayNameInput] = useState('');
   const [modelUrlInput, setModelUrlInput] = useState('');
   const [modelApiKeyInput, setModelApiKeyInput] = useState('');
   const [modelHeadersInput, setModelHeadersInput] = useState('');
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editingOriginalModelName, setEditingOriginalModelName] = useState<string | null>(null);
+  const [editingSourceModels, setEditingSourceModels] = useState<string[]>([]);
+  const [editModelBusy, setEditModelBusy] = useState(false);
+  const modelIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const openHub = useChatStore((s) => s.openHub);
   const currentProjectPath = useChatStore((s) => s.currentProjectPath);
   const confirm = useConfirm();
 
-  const canConfirmCreateModel =
-    modelNameInput?.trim().length > 0 &&
-    modelUrlInput?.trim().length > 0 &&
-    modelApiKeyInput?.trim().length > 0 &&
-    modelDisplayNameInput?.trim().length > 0;
+  const isEditMode = Boolean(editingSourceId);
+  const canConfirmCreateModel = isEditMode
+    ? modelNameInput?.trim().length > 0
+    : modelNameInput?.trim().length > 0 && modelUrlInput?.trim().length > 0 && modelApiKeyInput?.trim().length > 0;
 
   const buildModelsUrl = useCallback(() => {
     const query = new URLSearchParams();
@@ -311,17 +361,79 @@ export function ModelsPanel() {
   const showNoResults = !loading && cards.length > 0 && hasSearchQuery && groupedCards.length === 0;
   const showGroups = !loading && groupedCards.length > 0;
 
+  const resolveModelConfigSourceId = (cardId: string): string | null => {
+    if (!cardId.startsWith('model_config:')) return null;
+    const parts = cardId.split(':');
+    if (parts.length < 3) return null;
+    const sourceId = parts[1]?.trim();
+    return sourceId ? sourceId : null;
+  };
+
+  const resolveProjectPathForPayload = () =>
+    resolvedProjectPath || (currentProjectPath && currentProjectPath !== 'default' ? currentProjectPath : undefined);
+
   const closeCreateModelModal = () => {
     setShowCreateModelModal(false);
     setCreateModelError(null);
+    setEditingSourceId(null);
+    setEditingOriginalModelName(null);
+    setEditingSourceModels([]);
   };
 
   const resetCreateModelForm = () => {
     setModelNameInput('');
+    setModelDescriptionInput('');
+    setModelIconInput('');
     setModelDisplayNameInput('');
     setModelUrlInput('');
     setModelApiKeyInput('');
     setModelHeadersInput('');
+  };
+
+  const handleOpenCreateModelModal = () => {
+    resetCreateModelForm();
+    setEditingSourceId(null);
+    setEditingOriginalModelName(null);
+    setEditingSourceModels([]);
+    setCreateModelError(null);
+    setShowCreateModelModal(true);
+  };
+
+  const handleOpenEditModelModal = async (card: ModelCardData) => {
+    const sourceId = resolveModelConfigSourceId(card.id);
+    if (!sourceId || editModelBusy) return;
+
+    resetCreateModelForm();
+    setCreateModelError(null);
+    setEditModelBusy(true);
+    try {
+      const projectPath = resolveProjectPathForPayload();
+      const query = new URLSearchParams();
+      if (projectPath) query.set('projectPath', projectPath);
+      const queryText = query.toString();
+      const url = `/api/model-config-profiles${queryText ? `?${queryText}` : ''}`;
+      const res = await apiFetch(url);
+      const body = (await res.json().catch(() => ({}))) as { providers?: ModelConfigProviderItem[]; error?: string };
+      if (!res.ok) {
+        throw new Error(body.error ?? `请求失败 (${res.status})`);
+      }
+      const provider = (body.providers ?? []).find((item) => item.id === sourceId);
+
+      setEditingSourceId(sourceId);
+      setEditingOriginalModelName(card.name);
+      setEditingSourceModels(Array.isArray(provider?.models) ? provider.models : [card.name]);
+      setModelNameInput(card.name);
+      setModelDescriptionInput(provider?.description ?? card.description ?? '');
+      setModelDisplayNameInput(provider?.displayName ?? '');
+      setModelIconInput(provider?.icon?.trim() || card.icon?.trim() || '');
+      setModelUrlInput(provider?.baseUrl ?? '');
+      setModelApiKeyInput(provider?.apiKey ?? '');
+      setShowCreateModelModal(true);
+    } catch (error) {
+      setCreateModelError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setEditModelBusy(false);
+    }
   };
 
   const handleCreateModel = async () => {
@@ -330,23 +442,59 @@ export function ModelsPanel() {
     setCreateModelBusy(true);
     try {
       const headers = parseHeadersJson(modelHeadersInput);
-      const payload = {
-        sourceId: generateModelConfigSourceId(),
-        displayName: modelDisplayNameInput.trim(),
-        baseUrl: modelUrlInput.trim(),
-        apiKey: modelApiKeyInput.trim(),
-        ...(headers ? { headers } : {}),
-        models: [modelNameInput.trim()],
-        ...(resolvedProjectPath ? { projectPath: resolvedProjectPath } : {}),
-      };
-      const res = await apiFetch('/api/model-config-profiles', {
-        method: 'POST',
+      const description = modelDescriptionInput.trim();
+      const displayName = modelDisplayNameInput.trim();
+      const icon = modelIconInput.trim();
+      const projectPath = resolveProjectPathForPayload();
+      let method: 'POST' | 'PUT' = 'POST';
+      let url = '/api/model-config-profiles';
+      let payload: Record<string, unknown>;
+
+      if (editingSourceId) {
+        method = 'PUT';
+        url = `/api/model-config-profiles/${encodeURIComponent(editingSourceId)}`;
+        const nextModel = modelNameInput.trim();
+        const previousModel = editingOriginalModelName?.trim() || '';
+        const sourceModels =
+          editingSourceModels.length > 0 ? [...editingSourceModels] : previousModel ? [previousModel] : [];
+        const replacedModels = sourceModels.map((name) => (name === previousModel ? nextModel : name));
+        const mergedModels = Array.from(
+          new Set(
+            (replacedModels.length > 0 ? replacedModels : [nextModel]).map((name) => name.trim()).filter(Boolean),
+          ),
+        );
+        payload = {
+          ...(displayName ? { displayName } : {}),
+          description: description || null,
+          ...(icon ? { icon } : {}),
+          ...(modelUrlInput.trim() ? { baseUrl: modelUrlInput.trim() } : {}),
+          ...(modelApiKeyInput.trim() ? { apiKey: modelApiKeyInput.trim() } : {}),
+          ...(headers ? { headers } : {}),
+          models: mergedModels,
+          ...(projectPath ? { projectPath } : {}),
+        };
+      } else {
+        payload = {
+          sourceId: generateModelConfigSourceId(),
+          ...(displayName ? { displayName } : {}),
+          ...(description ? { description } : {}),
+          ...(icon ? { icon } : {}),
+          baseUrl: modelUrlInput.trim(),
+          apiKey: modelApiKeyInput.trim(),
+          ...(headers ? { headers } : {}),
+          models: [modelNameInput.trim()],
+          ...(projectPath ? { projectPath } : {}),
+        };
+      }
+
+      const res = await apiFetch(url, {
+        method,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        throw new Error(body.error ?? `璇锋眰澶辫触 (${res.status})`);
+        throw new Error(body.error ?? `请求失败 (${res.status})`);
       }
       resetCreateModelForm();
       closeCreateModelModal();
@@ -355,6 +503,28 @@ export function ModelsPanel() {
       setCreateModelError(error instanceof Error ? error.message : String(error));
     } finally {
       setCreateModelBusy(false);
+    }
+  };
+
+  const handleModelIconUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > MODEL_ICON_MAX_BYTES) {
+      setCreateModelError('图标文件大小不能超过 200KB');
+      event.target.value = '';
+      return;
+    }
+
+    setCreateModelError(null);
+    setModelIconUploading(true);
+    try {
+      const uploaded = await uploadAvatarAsset(file);
+      setModelIconInput(uploaded);
+    } catch (error) {
+      setCreateModelError(error instanceof Error ? error.message : '图标上传失败');
+    } finally {
+      setModelIconUploading(false);
+      event.target.value = '';
     }
   };
 
@@ -374,7 +544,7 @@ export function ModelsPanel() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder={SEARCH_PLACEHOLDER}
-                className="ui-field h-[28px] min-h-[28px] w-full px-3 py-0 text-xs"
+                className="ui-input h-[28px] min-h-[28px] w-full px-3 py-0 text-xs"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -394,7 +564,7 @@ export function ModelsPanel() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowCreateModelModal(true)}
+                onClick={handleOpenCreateModelModal}
                 data-testid="models-open-create-model-modal"
                 className="ui-button-primary"
               >
@@ -417,10 +587,7 @@ export function ModelsPanel() {
           {showGroups &&
             groupedCards.map((group) => (
               <section key={group.key} className="space-y-3">
-                <h3
-                  className="text-[14px] font-semibold text-[var(--text-primary)]"
-                  style={{ marginBlock: '24px' }}
-                >
+                <h3 className="text-[14px] font-semibold text-[var(--text-primary)]" style={{ marginBlock: '24px' }}>
                   {group.label} ({group.items.length})
                 </h3>
 
@@ -430,14 +597,24 @@ export function ModelsPanel() {
                       <div>
                         <div className="flex items-start gap-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={card.icon || DEFAULT_ICON}
-                            alt={`${card.name} icon`}
-                            width={48}
-                            height={48}
-                            className="h-12 w-12 shrink-0 rounded-[var(--radius-lg)] border border-[var(--border-default)] object-cover p-1.5"
-                            data-testid={`model-card-icon-${card.id}`}
-                          />
+                          {card.icon ? (
+                            <img
+                              src={card.icon}
+                              alt={`${card.name} icon`}
+                              width={48}
+                              height={48}
+                              className="h-12 w-12 shrink-0 rounded-[var(--radius-lg)] border border-[var(--border-default)] object-cover p-1.5"
+                              data-testid={`model-card-icon-${card.id}`}
+                            />
+                          ) : (
+                            <div className="h-12 w-12 shrink-0 rounded-[var(--radius-lg)] border border-[var(--border-default)] p-1.5">
+                              <NameInitialIcon
+                                name={card.name}
+                                dataTestId={`model-card-icon-${card.id}`}
+                                className="h-full w-full rounded-[var(--radius-md)] border-0 shadow-none"
+                              />
+                            </div>
+                          )}
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
@@ -458,12 +635,11 @@ export function ModelsPanel() {
                         </div>
                       </div>
 
-                      <p
-                        className="text-[13px] leading-6 text-[var(--text-secondary)] line-clamp-2 overflow-hidden"
-                        title={card.description}
-                      >
-                        {card.description}
-                      </p>
+                      <InfoTooltip content={card.description} className="w-full">
+                        <p className="text-[13px] leading-6 text-[var(--text-secondary)] line-clamp-2 overflow-hidden">
+                          {card.description}
+                        </p>
+                      </InfoTooltip>
 
                       <div className="mt-auto flex items-end justify-between gap-3">
                         <div className="min-h-5 text-xs leading-5">
@@ -472,7 +648,7 @@ export function ModelsPanel() {
                               <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-opacity duration-200 group-hover:opacity-0">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={card.icon || DEFAULT_ICON}
+                                  src={VENDOR_ICON}
                                   alt={`${card.developer} icon`}
                                   width={16}
                                   height={16}
@@ -480,23 +656,36 @@ export function ModelsPanel() {
                                 />
                                 <span>{card.developer}</span>
                               </span>
-                              <button
-                                type="button"
-                                disabled={deletingModelId === card.id}
-                                onClick={() => {
-                                  void handleDeleteModel(card.id, card.name);
-                                }}
-                                data-testid={`model-card-delete-${card.id}`}
-                                className="absolute left-0 top-0 opacity-0 text-[14px] font-bold text-[var(--text-accent)] transition-opacity duration-200 hover:underline group-hover:opacity-100 disabled:opacity-50"
-                              >
-                                {deletingModelId === card.id ? '\u5220\u9664\u4e2d...' : DELETE_MODEL_LABEL}
-                              </button>
+                              <div className="absolute left-0 top-0 flex items-center whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  data-testid={`model-card-edit-${card.id}`}
+                                  disabled={editModelBusy}
+                                  onClick={() => {
+                                    void handleOpenEditModelModal(card);
+                                  }}
+                                  className="whitespace-nowrap text-[14px] font-bold text-[var(--text-accent)] hover:underline"
+                                >
+                                  编辑
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={deletingModelId === card.id}
+                                  onClick={() => {
+                                    void handleDeleteModel(card.id, card.name);
+                                  }}
+                                  data-testid={`model-card-delete-${card.id}`}
+                                  className="ml-3 whitespace-nowrap text-[14px] font-bold text-[var(--text-accent)] hover:underline disabled:opacity-50"
+                                >
+                                  {deletingModelId === card.id ? '删除中...' : DELETE_MODEL_LABEL}
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={card.icon || DEFAULT_ICON}
+                                src={VENDOR_ICON}
                                 alt={`${card.developer} icon`}
                                 width={16}
                                 height={16}
@@ -518,112 +707,176 @@ export function ModelsPanel() {
       {showCreateModelModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
-          onClick={closeCreateModelModal}
           data-testid="models-create-model-modal"
         >
-          <div
-            className="w-[500px] rounded-2xl border border-[#E5EAF0] bg-white p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex flex-col gap-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-[16px] font-bold">{CREATE_MODEL_MODAL_TITLE}</h3>
-                <button
-                  type="button"
-                  onClick={closeCreateModelModal}
-                  aria-label="close"
-                  className="flex h-6 w-6 items-center justify-center rounded text-[#5F6775] transition-colors hover:bg-[#F7F8FA]"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+          <div className="flex w-[500px] max-h-[calc(100vh-4rem)] flex-col gap-5 overflow-hidden rounded-[8px] border border-[#E5EAF0] bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[16px] font-bold">{isEditMode ? '编辑模型' : CREATE_MODEL_LABEL}</h3>
+              <button
+                type="button"
+                onClick={closeCreateModelModal}
+                aria-label="close"
+                className="flex h-6 w-6 items-center justify-center rounded text-[#5F6775] transition-colors hover:bg-[#F7F8FA]"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-[12px] leading-[18px] text-[#2E3440]">{'\u6a21\u578b\u540d\u79f0'}</p>
-                  <input
-                    data-testid="models-create-model-name-input"
-                    value={modelNameInput}
-                    onChange={(event) => setModelNameInput(event.target.value)}
-                    placeholder={'\u8bf7\u8f93\u5165\u6a21\u578b\u540d\u79f0'}
-                    className="w-full rounded-[6px] border border-[rgb(194,194,194)] px-3 py-[5px] text-sm"
-                    style={{ height: '28px' }}
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[12px] leading-[18px] text-[#2E3440]">{'\u6a21\u578b\u5c55\u793a\u540d\u79f0'}</p>
-                  <input
-                    data-testid="models-create-model-display-name-input"
-                    value={modelDisplayNameInput}
-                    onChange={(event) => setModelDisplayNameInput(event.target.value)}
-                    placeholder={'\u8bf7\u8f93\u5165\u6a21\u578b\u5c55\u793a\u540d\u79f0'}
-                    className="w-full rounded-[6px] border border-[rgb(194,194,194)] px-3 py-[5px] text-sm"
-                    style={{ height: '28px' }}
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[12px] leading-[18px] text-[#2E3440]">{'\u8bbf\u95eeURL'}</p>
-                  <input
-                    data-testid="models-create-model-url-input"
-                    value={modelUrlInput}
-                    onChange={(event) => setModelUrlInput(event.target.value)}
-                    placeholder={'\u8bf7\u8f93\u5165\u8bbf\u95eeURL'}
-                    className="w-full rounded-[6px] border border-[rgb(194,194,194)] px-3 py-[5px] text-sm"
-                    style={{ height: '28px' }}
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[12px] leading-[18px] text-[#2E3440]">{'API Key'}</p>
-                  <input
-                    data-testid="models-create-model-api-key-input"
-                    type="password"
-                    value={modelApiKeyInput}
-                    onChange={(event) => setModelApiKeyInput(event.target.value)}
-                    placeholder={'\u8bf7\u8f93\u5165API Key'}
-                    className="w-full rounded-[6px] border border-[rgb(194,194,194)] px-3 py-[5px] text-sm"
-                    style={{ height: '28px' }}
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[12px] leading-[18px] text-[#2E3440]">{'请求头(可选)'}</p>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              <div className="space-y-1">
+                <p className="text-[12px] leading-[18px] text-[#2E3440]">{'模型名称'}</p>
+                <input
+                  data-testid="models-create-model-name-input"
+                  value={modelNameInput}
+                  onChange={(event) => setModelNameInput(event.target.value)}
+                  placeholder={'请输入模型名称'}
+                  className="ui-input ui-form-focus w-full rounded-[6px] px-3 py-[5px] text-sm"
+                  style={{ height: '28px' }}
+                  required
+                />
+              </div>
+              <div className="space-y-2.5">
+                <div className="text-[12px] text-[var(--text-primary)]">模型描述（可选）</div>
+                <div className="ui-field ui-form-focus-within relative bg-[var(--surface-panel)] pl-4 pt-2 pr-1">
                   <textarea
-                    data-testid="models-create-model-headers-textarea"
-                    value={modelHeadersInput}
-                    onChange={(event) => setModelHeadersInput(event.target.value)}
-                    rows={4}
-                    placeholder={'可选请求头(JSON)，如 {"X-App-Id":"cat-cafe"}'}
-                    className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                    data-testid="models-create-model-description-textarea"
+                    value={modelDescriptionInput}
+                    onChange={(event) => setModelDescriptionInput(event.target.value)}
+                    placeholder="请输入描述"
+                    maxLength={500}
+                    className="ui-textarea ui-textarea-plain pb-3 h-[60px] min-h-[60px] w-full text-[12px]"
                   />
+                  <div className="pointer-events-none absolute bottom-0 right-4 text-[12px] text-[var(--text-muted)]">
+                    {modelDescriptionInput.length}/500
+                  </div>
                 </div>
+              </div>
+              <div className="hidden space-y-1">
+                <p className="text-[12px] leading-[18px] text-[#2E3440]">{'模型展示名称'}</p>
+                <input
+                  data-testid="models-create-model-display-name-input"
+                  value={modelDisplayNameInput}
+                  onChange={(event) => setModelDisplayNameInput(event.target.value)}
+                  placeholder={'请输入模型展示名称'}
+                  className="ui-input ui-form-focus w-full rounded-[6px] px-3 py-[5px] text-sm"
+                  style={{ height: '28px' }}
+                  required
+                />
+              </div>
+              <div className="space-y-2.5">
+                <div className="text-[12px] text-[var(--text-primary)]">图标（可选）</div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    aria-label="Upload model icon"
+                    onClick={() => modelIconFileInputRef.current?.click()}
+                    className="group relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-[var(--radius-md)] border border-transparent transition hover:border-[var(--border-accent)]"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={modelIconInput || EMPTY_MODEL_ICON_DATA_URL}
+                      alt="Model icon preview"
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/70 text-[12px] font-semibold text-[#3B82F6] opacity-0 transition group-hover:opacity-100">
+                      上传
+                    </span>
+                  </button>
+                  <input
+                    ref={modelIconFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/jpg"
+                    onChange={handleModelIconUpload}
+                    className="hidden"
+                    data-testid="models-create-model-icon-file-input"
+                  />
+                  <div className="h-11 pt-[22px]">
+                    <div aria-hidden="true" className="h-[16px] w-px bg-[var(--border-default)]" />
+                  </div>
+                  <div className="h-11 pt-[16px]">
+                    <button
+                      type="button"
+                      aria-label="Random model icon"
+                      onClick={() => {
+                        const nextVariant = Math.floor(Math.random() * 10_000);
+                        setModelIconInput(buildNameInitialIconDataUrl(modelNameInput, nextVariant));
+                      }}
+                      className="ui-button-default h-[28px] w-[28px] min-h-[28px] min-w-[28px] rounded-[var(--radius-sm)] p-0"
+                    >
+                      <SparklesIcon />
+                    </button>
+                  </div>
+                </div>
+                <div className="text-[12px] text-[var(--text-muted)]">
+                  {modelIconUploading ? '图标上传中...' : '支持上传 png、jpeg、gif、jpg 格式图片，限制 200kb 内'}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[12px] leading-[18px] text-[#2E3440]">{'访问URL'}</p>
+                <input
+                  data-testid="models-create-model-url-input"
+                  name="cc_model_base_url"
+                  value={modelUrlInput}
+                  onChange={(event) => setModelUrlInput(event.target.value)}
+                  placeholder={'请输入访问URL'}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  className="ui-input ui-form-focus w-full rounded-[6px] px-3 py-[5px] text-sm"
+                  style={{ height: '28px' }}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[12px] leading-[18px] text-[#2E3440]">{'API Key'}</p>
+                <input
+                  data-testid="models-create-model-api-key-input"
+                  name="cc_model_api_key"
+                  type="password"
+                  value={modelApiKeyInput}
+                  onChange={(event) => setModelApiKeyInput(event.target.value)}
+                  placeholder={'请输入API Key'}
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  className="ui-input ui-form-focus w-full rounded-[6px] px-3 py-[5px] text-sm"
+                  style={{ height: '28px' }}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[12px] leading-[18px] text-[#2E3440]">{'请求头（可选）'}</p>
+                <textarea
+                  data-testid="models-create-model-headers-textarea"
+                  value={modelHeadersInput}
+                  onChange={(event) => setModelHeadersInput(event.target.value)}
+                  rows={4}
+                  placeholder={'可选请求头(JSON)，如 {"X-App-Id":"cat-cafe"}'}
+                  className="ui-textarea ui-form-focus w-full rounded px-3 py-2 text-sm"
+                />
               </div>
               {createModelError ? (
                 <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-500">{createModelError}</p>
               ) : null}
+            </div>
 
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeCreateModelModal}
-                  className="ui-button-secondary"
-                >
-                  {CREATE_MODEL_CANCEL_LABEL}
-                </button>
-                <button
-                  type="button"
-                  disabled={!canConfirmCreateModel || createModelBusy}
-                  onClick={handleCreateModel}
-                  data-testid="models-create-model-confirm"
-                  className="ui-button-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {createModelBusy ? '\u521b\u5efa\u4e2d...' : CREATE_MODEL_CONFIRM_LABEL}
-                </button>
-              </div>
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" onClick={closeCreateModelModal} className="ui-button-default ui-modal-action-button">
+                {CREATE_MODEL_CANCEL_LABEL}
+              </button>
+              <button
+                type="button"
+                disabled={!canConfirmCreateModel || createModelBusy || modelIconUploading || editModelBusy}
+                onClick={handleCreateModel}
+                data-testid="models-create-model-confirm"
+                className="ui-button-primary ui-modal-action-button disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {createModelBusy ? '创建中...' : CREATE_MODEL_CONFIRM_LABEL}
+              </button>
             </div>
           </div>
         </div>
@@ -632,13 +885,9 @@ export function ModelsPanel() {
       {showAddModelModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
-          onClick={() => setShowAddModelModal(false)}
           data-testid="models-add-model-modal"
         >
-          <div
-            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-base font-semibold text-[#2E3440]">{ADD_MODEL}</h3>
               <button
@@ -742,14 +991,14 @@ function ModelsCreateModelConfigSource({
         onChange={(event) => setDisplayName(event.target.value)}
         placeholder="显示名称，如 My OpenAI Proxy"
         autoComplete="off"
-        className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+        className="ui-input w-full rounded px-3 py-2 text-sm"
       />
       <input
         value={baseUrl}
         onChange={(event) => setBaseUrl(event.target.value)}
         placeholder="Base URL，如 https://api.example.com/v1"
         autoComplete="off"
-        className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+        className="ui-input w-full rounded px-3 py-2 text-sm"
       />
       <input
         type="password"
@@ -757,14 +1006,14 @@ function ModelsCreateModelConfigSource({
         value={apiKey}
         onChange={(event) => setApiKey(event.target.value)}
         placeholder="API Key"
-        className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+        className="ui-input w-full rounded px-3 py-2 text-sm"
       />
       <textarea
         value={headersText}
         onChange={(event) => setHeadersText(event.target.value)}
         rows={4}
         placeholder={'可选请求头(JSON)，如 {"X-App-Id":"cat-cafe"}'}
-        className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+        className="ui-textarea w-full rounded px-3 py-2 text-sm"
       />
       <div className="space-y-2">
         <p className="text-xs font-semibold text-[#6E7785]">可用模型 *</p>

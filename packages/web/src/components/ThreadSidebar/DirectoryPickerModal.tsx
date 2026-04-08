@@ -195,7 +195,7 @@ export function DirectoryPickerModal({
             onChange={(e) => setThreadTitle(e.target.value)}
             placeholder="对话标题（可选）"
             maxLength={200}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-cocreator-primary"
+            className="ui-input w-full text-sm px-3 py-2 rounded-lg"
           />
         </div>
 
@@ -338,7 +338,7 @@ export function DirectoryPickerModal({
                             onChange={(e) => setSessionInputs((prev) => ({ ...prev, [catId]: e.target.value }))}
                             placeholder="CLI Session ID"
                             maxLength={500}
-                            className="flex-1 text-[11px] font-mono px-2 py-1 rounded border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-cocreator-primary"
+                            className="ui-input ui-input-soft flex-1 text-[11px] font-mono px-2 py-1 rounded"
                           />
                         </div>
                       );
@@ -383,7 +383,7 @@ export function DirectoryPickerModal({
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing) handlePathSubmit();
               }}
               placeholder="或输入路径..."
-              className="flex-1 text-xs px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-cocreator-primary"
+              className="ui-input flex-1 text-xs px-3 py-2 rounded-lg"
             />
             {pathInput.trim() && (
               <button

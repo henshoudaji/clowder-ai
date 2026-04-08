@@ -147,12 +147,12 @@ describe('provider profiles routes', () => {
           activeProfileId: null,
           providers: [
             {
-              id: 'agent-teams-local',
+              id: 'relay-teams-local',
               displayName: 'Agent Teams Local',
               builtin: false,
-              command: 'agent-teams',
+              command: 'relay-teams',
               args: ['gateway', 'acp', 'stdio'],
-              cwd: '/opt/workspace/agent-teams',
+              cwd: '/opt/workspace/relay-teams',
               createdAt: '2026-03-27T00:00:00.000Z',
               updatedAt: '2026-03-27T00:00:00.000Z',
             },
@@ -162,12 +162,12 @@ describe('provider profiles routes', () => {
       );
 
       const view = await readProviderProfiles(projectDir);
-      const normalized = view.providers.find((profile) => profile.id === 'agent-teams-local');
+      const normalized = view.providers.find((profile) => profile.id === 'relay-teams-local');
       assert.ok(normalized, 'legacy ACP profile should still be listed');
       assert.equal(normalized.kind, 'acp');
       assert.equal(normalized.authType, 'none');
       assert.equal(normalized.protocol, 'acp');
-      assert.equal(normalized.command, 'agent-teams');
+      assert.equal(normalized.command, 'relay-teams');
     } finally {
       restoreGlobalRoot();
       await rm(projectDir, { recursive: true, force: true });
@@ -304,18 +304,18 @@ describe('provider profiles routes', () => {
         payload: JSON.stringify({
           projectPath: projectDir,
           kind: 'acp',
-          displayName: 'agent-teams-env',
-          command: 'agent-teams',
+          displayName: 'relay-teams-env',
+          command: 'relay-teams',
           args: ['gateway', 'acp', 'stdio'],
           env: {
             ACP_TRACE_STDIO: '1',
-            AGENT_TEAMS_LOG_LEVEL: 'DEBUG',
+            RELAY_TEAMS_LOG_LEVEL: 'DEBUG',
           },
         }),
       });
       assert.equal(createRes.statusCode, 200);
       const created = createRes.json();
-      assert.deepEqual(created.profile.envKeys, ['ACP_TRACE_STDIO', 'AGENT_TEAMS_LOG_LEVEL']);
+      assert.deepEqual(created.profile.envKeys, ['ACP_TRACE_STDIO', 'RELAY_TEAMS_LOG_LEVEL']);
 
       const listRes = await app.inject({
         method: 'GET',
@@ -324,12 +324,12 @@ describe('provider profiles routes', () => {
       });
       assert.equal(listRes.statusCode, 200);
       const listed = listRes.json().providers.find((profile) => profile.id === created.profile.id);
-      assert.deepEqual(listed?.envKeys, ['ACP_TRACE_STDIO', 'AGENT_TEAMS_LOG_LEVEL']);
+      assert.deepEqual(listed?.envKeys, ['ACP_TRACE_STDIO', 'RELAY_TEAMS_LOG_LEVEL']);
 
       const runtime = await resolveRuntimeProviderProfileById(projectDir, created.profile.id);
       assert.deepEqual(runtime?.env, {
         ACP_TRACE_STDIO: '1',
-        AGENT_TEAMS_LOG_LEVEL: 'DEBUG',
+        RELAY_TEAMS_LOG_LEVEL: 'DEBUG',
       });
     } finally {
       restoreGlobalRoot();

@@ -666,15 +666,44 @@ let _defaultCatId: CatId | null = null;
  * Get the default cat ID for unaddressed messages.
  * Used as ultimate fallback in AgentRouter when no mentions/participants/preferredCats.
  *
- * Reads the first breed's catId from the loaded catalog/template config so that
- * renamed breeds (e.g. jiuwenclaw → office) are handled correctly without hardcoding.
- * Falls back to 'jiuwenclaw' only when no config is available.
+ * Resolution order:
+ * 1. Catalog-level `defaultCatId` field (set by preset installers)
+ * 2. `jiuwenclaw` if present in catalog (backward compat with dev environment)
+ * 3. First breed's catId from the catalog (preset deployments)
+ * 4. Hardcoded `jiuwenclaw` (ultimate fallback)
  */
 export function getDefaultCatId(): CatId {
   if (_defaultCatId) return _defaultCatId;
-  const cfg = getCachedConfig();
-  const firstBreed = cfg?.breeds?.[0];
-  _defaultCatId = createCatId(firstBreed?.catId ?? 'jiuwenclaw');
+
+  const config = getCachedConfig();
+  if (config) {
+    // 1. Catalog-level explicit default (e.g. preset deployments set this)
+    const catalogDefault = (config as unknown as Record<string, unknown>).defaultCatId;
+    if (typeof catalogDefault === 'string' && catalogDefault.length > 0) {
+      _defaultCatId = createCatId(catalogDefault);
+      return _defaultCatId;
+    }
+
+    // 2. Try jiuwenclaw (backward compat with full dev catalog)
+    const allConfigs = toAllCatConfigs(config);
+    if (allConfigs['jiuwenclaw']) {
+      _defaultCatId = createCatId('jiuwenclaw');
+      return _defaultCatId;
+    }
+
+    // 3. First breed's catId (preset deployments with custom members)
+    const firstBreed = config.breeds[0];
+    if (firstBreed) {
+      const catId = firstBreed.catId ?? firstBreed.variants?.[0]?.catId;
+      if (catId) {
+        _defaultCatId = createCatId(catId as string);
+        return _defaultCatId;
+      }
+    }
+  }
+
+  // 4. Ultimate fallback
+  _defaultCatId = createCatId('jiuwenclaw');
   return _defaultCatId;
 }
 

@@ -12,16 +12,20 @@ import { createHash } from 'node:crypto';
 
 export const GOVERNANCE_PACK_VERSION = '1.3.0';
 
-export const MANAGED_BLOCK_START = '<!-- CAT-CAFE-GOVERNANCE-START -->';
-export const MANAGED_BLOCK_END = '<!-- CAT-CAFE-GOVERNANCE-END -->';
+export const MANAGED_BLOCK_START = '<!-- CLOWDER-GOVERNANCE-START -->';
+export const MANAGED_BLOCK_END = '<!-- CLOWDER-GOVERNANCE-END -->';
 
-const HARD_CONSTRAINTS = `## Cat Cafe Governance Rules (Auto-managed)
+/** Legacy markers from pre-1.3.0 — used for upgrade migration only. */
+export const LEGACY_BLOCK_START = '<!-- CAT-CAFE-GOVERNANCE-START -->';
+export const LEGACY_BLOCK_END = '<!-- CAT-CAFE-GOVERNANCE-END -->';
+
+const HARD_CONSTRAINTS = `## Governance Rules (Auto-managed)
 
 ### Hard Constraints (immutable)
 - **Public local defaults**: use frontend 3003 and API 3004 to avoid colliding with another local runtime.
-- **Redis port 6399** is Cat Cafe's production Redis. Never connect to it from external projects. Use 6398 for dev/test.
+- **Redis port 6399** is production Redis. Never connect to it from external projects. Use 6398 for dev/test.
 - **No self-review**: The same individual cannot review their own code. Cross-family review preferred.
-- **Identity is constant**: Never impersonate another cat. Identity is a hard constraint.
+- **Identity is constant**: Never impersonate another agent. Identity is a hard constraint.
 
 ### Collaboration Standards
 - A2A handoff uses five-tuple: What / Why / Tradeoff / Open Questions / Next Action

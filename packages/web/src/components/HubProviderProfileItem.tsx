@@ -154,7 +154,7 @@ export function HubProviderProfileItem({
             onChange={(e) => setEditDisplayName(e.target.value)}
             placeholder="账号显示名"
             autoComplete="off"
-            className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+            className="ui-input w-full rounded px-3 py-2 text-sm"
           />
           {profile.kind === 'acp' ? (
             <>
@@ -162,27 +162,27 @@ export function HubProviderProfileItem({
                 value={editCommand}
                 onChange={(e) => setEditCommand(e.target.value)}
                 placeholder="命令"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <textarea
                 value={editArgs}
                 onChange={(e) => setEditArgs(e.target.value)}
                 rows={3}
                 placeholder="参数按空格分隔"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-textarea w-full rounded px-3 py-2 text-sm"
               />
               <input
                 value={editCwd}
                 onChange={(e) => setEditCwd(e.target.value)}
                 placeholder="可选 cwd"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <textarea
                 value={editEnvText}
                 onChange={(e) => setEditEnvText(e.target.value)}
                 rows={3}
                 placeholder="每行 KEY=value；留空保持现有值"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-textarea w-full rounded px-3 py-2 text-sm"
               />
               <select
                 value={editModelAccessMode}
@@ -226,7 +226,7 @@ export function HubProviderProfileItem({
                 onChange={(e) => setEditBaseUrl(e.target.value)}
                 placeholder="API 服务地址，如 https://api.example.com/v1"
                 autoComplete="off"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <input
                 type="password"
@@ -234,7 +234,7 @@ export function HubProviderProfileItem({
                 value={editApiKey}
                 onChange={(e) => setEditApiKey(e.target.value)}
                 placeholder={profile.hasApiKey ? '已配置 sk-••••••••（留空保持不变）' : 'sk-xxxxxxxxxxxxxxxx'}
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-[#6E7785]">可用模型</p>

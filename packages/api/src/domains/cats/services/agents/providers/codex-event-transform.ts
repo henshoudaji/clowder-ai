@@ -1,3 +1,4 @@
+import { basename, extname, isAbsolute, relative, resolve } from 'node:path';
 import type { CatId } from '@cat-cafe/shared';
 import type { AgentMessage } from '../../types.js';
 
@@ -16,6 +17,87 @@ export interface CodexStreamState {
   hadPriorTextTurn: boolean;
 }
 
+interface CodexEventContext {
+  workingDirectory?: string;
+  worktreeId?: string;
+}
+
+const OFFICE_MIME_MAP: Record<string, string> = {
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
+function normalizeWorkspacePath(rawPath: string, workingDirectory?: string): string | null {
+  const trimmed = rawPath.trim();
+  if (!trimmed) return null;
+
+  let normalized = trimmed.replace(/\\/g, '/');
+  if (workingDirectory && isAbsolute(trimmed)) {
+    const rel = relative(workingDirectory, trimmed).replace(/\\/g, '/');
+    if (!rel.startsWith('../') && rel !== '..') {
+      normalized = rel;
+    }
+  } else if (workingDirectory && !isAbsolute(trimmed)) {
+    normalized = relative(workingDirectory, resolve(workingDirectory, trimmed)).replace(/\\/g, '/');
+  }
+
+  return normalized.startsWith('../') || normalized === '..' ? null : normalized;
+}
+
+function extractChangedPaths(changes: unknown, workingDirectory?: string): string[] {
+  if (!Array.isArray(changes)) return [];
+  const paths: string[] = [];
+
+  for (const change of changes) {
+    const rawPath =
+      typeof change === 'string'
+        ? change
+        : change && typeof change === 'object'
+          ? (((change as Record<string, unknown>).path ??
+              (change as Record<string, unknown>).file_path ??
+              (change as Record<string, unknown>).new_path ??
+              (change as Record<string, unknown>).target_path) as string | undefined)
+          : undefined;
+
+    if (typeof rawPath !== 'string') continue;
+    const normalized = normalizeWorkspacePath(rawPath, workingDirectory);
+    if (normalized) paths.push(normalized);
+  }
+
+  return [...new Set(paths)];
+}
+
+function buildWorkspaceFileRichBlocks(paths: string[], worktreeId?: string): AgentMessage[] {
+  if (!worktreeId) return [];
+
+  return paths
+    .filter((path) => {
+      const ext = extname(path).toLowerCase();
+      return ext === '.ppt' || ext === '.pptx';
+    })
+    .map((path) => {
+      const ext = extname(path).toLowerCase();
+      return {
+        type: 'system_info' as const,
+        catId: '' as CatId,
+        content: JSON.stringify({
+          type: 'rich_block',
+          block: {
+            id: `workspace-file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            kind: 'file',
+            v: 1,
+            url: `/api/workspace/download?worktreeId=${encodeURIComponent(worktreeId)}&path=${encodeURIComponent(path)}`,
+            fileName: basename(path),
+            mimeType: OFFICE_MIME_MAP[ext],
+            worktreeId,
+            workspacePath: path,
+          },
+        }),
+        timestamp: Date.now(),
+      };
+    });
+}
+
 /**
  * Transform a raw Codex CLI NDJSON event into an AgentMessage.
  * Returns null to skip events we don't care about.
@@ -27,6 +109,7 @@ export function transformCodexEvent(
   event: unknown,
   catId: CatId,
   state?: CodexStreamState,
+  context?: CodexEventContext,
 ): AgentMessage | AgentMessage[] | null {
   if (typeof event !== 'object' || event === null) return null;
   const e = event as Record<string, unknown>;
@@ -160,13 +243,16 @@ export function transformCodexEvent(
   if (item?.type === 'file_change') {
     const changes = Array.isArray(item.changes) ? item.changes : [];
     const status = typeof item.status === 'string' ? item.status : 'completed';
-    return {
+    const paths = extractChangedPaths(changes, context?.workingDirectory);
+    const toolUse: AgentMessage = {
       type: 'tool_use',
       catId,
       toolName: 'file_change',
-      toolInput: { status, changes: changes.length },
+      toolInput: { status, changes: changes.length, ...(paths.length > 0 ? { paths } : {}) },
       timestamp: Date.now(),
     };
+    const richBlocks = buildWorkspaceFileRichBlocks(paths, context?.worktreeId).map((msg) => ({ ...msg, catId }));
+    return richBlocks.length > 0 ? [toolUse, ...richBlocks] : toolUse;
   }
 
   // F045: mcp_tool_call completed → tool_result (+ F060: optional rich_block for images)

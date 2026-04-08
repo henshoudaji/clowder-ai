@@ -2,14 +2,14 @@
 name: self-evolution
 description: >
   Scope Guard + Process Evolution + Knowledge Evolution — 主动护栏与自我进化。
-  Use when: 铲屎官 scope 发散偏离愿景、同类错误反复出现、SOP 流程缺口、有价值的知识/方法论值得沉淀。
+  Use when: 用户 scope 发散偏离愿景、同类错误反复出现、SOP 流程缺口、有价值的知识/方法论值得沉淀。
   Not for: 日常 SOP 推进（正常执行）、一次性个案 bug fix。
   Output: Scope Guard Log 记录 / Evolution Proposal 提案 / Episode Card → Method/Skill 蒸馏 → Eval 验证。
 ---
 
 # Self-Evolution — Scope Guard + Process Evolution + Knowledge Evolution
 
-> 三猫共用。猫猫是主动的共创伙伴（P2），不是被动的 agent。
+> 多 agent 共用。Agent 是主动的共创伙伴（P2），不是被动的 agent。
 > 发现问题就护栏，发现规律就改进，发现知识就沉淀。
 > **闭环 = 触发→产出结构化记录→蒸馏复用资产→验证净增益→五级阶梯治理。**
 
@@ -17,7 +17,7 @@ description: >
 
 | 模式 | 方向 | 保护/推动什么 | 触发 | 产出物 |
 |------|------|---------------|------|--------|
-| **A: Scope Guard** | 防御 | 当前 feat 验收边界 | 铲屎官讨论偏离愿景 | Scope Guard Log 记录 |
+| **A: Scope Guard** | 防御 | 当前 feat 验收边界 | 用户讨论偏离愿景 | Scope Guard Log 记录 |
 | **B: Process Evolution** | 防御→改进 | 团队流程持续改进 | 重复犯错 / 流程缺口 | Evolution Proposal |
 | **C: Knowledge Evolution** | 进攻→成长 | 团队能力边界扩展 | 有价值的知识/方法论产生 | Episode Card → Method/Skill |
 
@@ -38,10 +38,10 @@ description: >
 
 ### 行为
 
-> 铲屎官，先收一下：当前 feat 愿景是 **{愿景}**。刚才提到的 **{新方向}** 更像独立 feat / 下一 phase。要不要拆出去方便验收？
+> 用户，先收一下：当前 feat 愿景是 **{愿景}**。刚才提到的 **{新方向}** 更像独立 feat / 下一 phase。要不要拆出去方便验收？
 
 - 同一 phase **最多两次**：第一次温柔，第二次明确说"建议碰头"
-- 铲屎官说"不拆" → 复述新验收边界，不再追问
+- 用户说"不拆" → 复述新验收边界，不再追问
 - 出口：继续 / 拆 feat / parking lot / 碰头
 
 ### 触发后记录
@@ -53,7 +53,7 @@ description: >
 ```
 
 - **同一 feat ≥3 次**触发 → 强烈建议拆 feat
-- **效果追踪**：成功率 = 铲屎官聚焦 / 总触发，用于调节灵敏度
+- **效果追踪**：成功率 = 用户聚焦 / 总触发，用于调节灵敏度
 
 ---
 
@@ -62,7 +62,7 @@ description: >
 ### 触发（任一）
 
 1. Memory 中同类错误 **≥ 2 次**
-2. 铲屎官纠正了**可泛化为规则**的行为
+2. 用户纠正了**可泛化为规则**的行为
 3. SOP 执行中发现**没有指引**
 4. Review 指出**系统性问题**（非个案 bug）
 
@@ -70,7 +70,7 @@ description: >
 
 1. **写提案**：用 `docs/evolution-proposals/TEMPLATE.md` 创建 `EP-XXX.md`
 2. **5 槽模板**：Trigger / Evidence(≥2 源) / Root Cause / Lever(最小杠杆) / Verify
-3. **审批**：影响单猫→直接提铲屎官；影响三猫→先 1 猫 sanity check→铲屎官拍板
+3. **审批**：影响单 agent→直接提用户；影响多 agent→先 1 agent sanity check→用户拍板
 4. **落地闭环**：accepted → 必须关联 commit/PR，不能停在"提了"
 5. **30 天验证**：落地 30 天后自动触发 replay check——同类错误还出现吗？
 
@@ -97,7 +97,7 @@ description: >
 1. **Deep research** 产出了跨场景可复用的知识或框架
 2. **专业领域讨论**（医疗/法律/投资/技术调研等）形成了可迁移的分析方法论
 3. **跨域协作**中发现了可复用的协作模式或思维框架
-4. **铲屎官说"这个值得记住"** 或猫猫自主判断有高复用价值
+4. **用户说"这个值得记住"** 或agent自主判断有高复用价值
 
 ### 判断标准：值得沉淀吗？
 
@@ -219,9 +219,6 @@ Replay A/B 验证知识净增益。用 `evals/mode-c/TEMPLATE/` 结构创建。
 ## 和其他 Skill 的区别
 
 - `collaborative-thinking`：讨论收敛用它；scope 漂/犯错/知识沉淀 → self-evolution
-- `deep-research`：调研过程用它；调研产出有复用价值 → Mode C
-- `debugging`：定位 bug 用它；同类 bug 反复 → Mode B
-- `writing-skills`：写 skill 用它；Mode C 蒸馏出 Skill Draft → writing-skills 接手
 
 ## 出口
 

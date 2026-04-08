@@ -20,6 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const packageJson = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
 const DEFAULT_WEBVIEW2_VERSION = process.env.CLOWDER_WEBVIEW2_VERSION ?? '1.0.3856.49';
+const WEBVIEW2_BOOTSTRAPPER_URL = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
 const WINDOWS_RUNTIME_NPM_ARGS = [
   'install',
   '--omit=dev',
@@ -575,17 +576,29 @@ function installSharedPythonDeps(bundleDir) {
 
   // Install DARE dependencies (from pyproject.toml, excluding test deps)
   const dareDeps = [
-    'anthropic', 'langchain-openai', 'langchain-core',
-    'httpx>=0.27.0', 'starlette>=0.37.0', 'uvicorn>=0.30.0', 'chromadb>=0.4.0',
+    'anthropic',
+    'langchain-openai',
+    'langchain-core',
+    'httpx>=0.27.0',
+    'starlette>=0.37.0',
+    'uvicorn>=0.30.0',
+    'chromadb>=0.4.0',
   ];
   run(pythonExe, ['-m', 'pip', 'install', '-q', '--no-warn-script-location', ...dareDeps]);
 
   // Install JiuwenClaw core runtime deps explicitly, then the package itself with --no-deps
   // (avoids pulling heavy optional deps like telegram-bot, discord.py, dingtalk etc.)
   const jiuwenCoreDeps = [
-    'psutil>=7.0', 'loguru>=0.7', 'ruamel.yaml>=0.18', 'python-dotenv>=1.0',
-    'websockets>=12.0', 'aiosqlite>=0.22', 'croniter>=2.0', 'mutagen>=1.47',
-    'greenlet>=3.0', 'openjiuwen==0.1.7',
+    'psutil>=7.0',
+    'loguru>=0.7',
+    'ruamel.yaml>=0.18',
+    'python-dotenv>=1.0',
+    'websockets>=12.0',
+    'aiosqlite>=0.22',
+    'croniter>=2.0',
+    'mutagen>=1.47',
+    'greenlet>=3.0',
+    'openjiuwen==0.1.7',
   ];
   run(pythonExe, ['-m', 'pip', 'install', '-q', '--no-warn-script-location', ...jiuwenCoreDeps]);
   const jiuwenClawDir = join(repoRoot, 'vendor', 'jiuwenclaw');
@@ -593,18 +606,18 @@ function installSharedPythonDeps(bundleDir) {
 
   // Install office automation libraries for MCP servers
   const officeDeps = [
-    'python-pptx',   // PowerPoint read/write
-    'openpyxl',      // Excel read/write
-    'python-docx',   // Word read/write
-    'xlsxwriter',    // Excel write (fast, chart support)
-    'pypdf',         // PDF read/merge/split
-    'reportlab',     // PDF creation
-    'markitdown',    // Microsoft multi-format → Markdown converter
+    'python-pptx', // PowerPoint read/write
+    'openpyxl', // Excel read/write
+    'python-docx', // Word read/write
+    'xlsxwriter', // Excel write (fast, chart support)
+    'pypdf', // PDF read/merge/split
+    'reportlab', // PDF creation
+    'markitdown', // Microsoft multi-format → Markdown converter
   ];
   run(pythonExe, ['-m', 'pip', 'install', '-q', '--no-warn-script-location', ...officeDeps]);
 
-  // Install agent-teams CLI for ACP multi-agent orchestration
-  run(pythonExe, ['-m', 'pip', 'install', '-q', '--no-warn-script-location', 'cool-play-agent-teams']);
+  // Install relay-teams CLI for ACP multi-agent orchestration
+  run(pythonExe, ['-m', 'pip', 'install', '-q', '--no-warn-script-location', 'relay-teams']);
 
   // Prune site-packages to reduce size
   const sitePackages = join(bundleDir, 'tools', 'python', 'Lib', 'site-packages');
@@ -1271,6 +1284,25 @@ function ensureRuntimeSkeleton(bundleDir) {
   ensureDir(join(bundleDir, 'data'));
   ensureDir(join(bundleDir, 'logs'));
   ensureDir(join(bundleDir, '.cat-cafe'));
+  ensureDir(join(bundleDir, 'tools', 'webview2'));
+}
+
+async function stageWebView2Installer(bundleDir, options) {
+  const webview2Dir = join(bundleDir, 'tools', 'webview2');
+  const installerPath = join(webview2Dir, 'MicrosoftEdgeWebview2Setup.exe');
+
+  if (existsSync(installerPath)) {
+    logStep('WebView2 installer already exists, skipping download');
+    return;
+  }
+
+  logStep('Downloading WebView2 Bootstrapper...');
+  const archiveName = 'MicrosoftEdgeWebview2Setup.exe';
+  const archivePath = join(options.cacheDir, archiveName);
+  await ensureCachedDownload(WEBVIEW2_BOOTSTRAPPER_URL, archivePath);
+
+  cpSync(archivePath, installerPath, { force: true });
+  logStep('WebView2 Bootstrapper downloaded');
 }
 
 function computeMaxRelativePathLength(bundleDir) {
@@ -1485,6 +1517,7 @@ async function main() {
 
   logStep('Finalizing runtime bundle');
   ensureRuntimeSkeleton(bundleDir);
+  await stageWebView2Installer(bundleDir, options);
   writeReleaseMetadata(bundleDir, {
     name: 'Clowder AI',
     version: packageJson.version,

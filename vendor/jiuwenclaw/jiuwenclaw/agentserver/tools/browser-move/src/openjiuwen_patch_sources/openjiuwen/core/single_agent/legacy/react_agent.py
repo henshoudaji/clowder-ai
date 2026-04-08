@@ -11,6 +11,7 @@ Will be removed in v1.0.0
 
 import asyncio
 import json
+from jiuwenclaw.utils import fix_json_arguments
 from typing import Dict, Any, AsyncIterator, List
 
 from pydantic import ValidationError

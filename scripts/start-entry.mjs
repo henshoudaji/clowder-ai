@@ -19,11 +19,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 
 const IS_WINDOWS = process.platform === 'win32';
+const IS_MACOS_BUNDLED = process.platform === 'darwin' && process.env.CAT_CAFE_MACOS_BUNDLED === '1';
 
 // First positional arg is the mode (start | start:direct | dev:direct)
 const [mode, ...rest] = process.argv.slice(2);
 
-if (IS_WINDOWS) {
+if (IS_MACOS_BUNDLED) {
+  // macOS bundled release: use start-macos.sh with embedded runtimes
+  const cmd = resolve(__dirname, 'start-macos.sh');
+  const env = {
+    ...process.env,
+    CAT_CAFE_STRICT_PROFILE_DEFAULTS: '1',
+    CAT_CAFE_RESPECT_DOTENV_PORTS: '1',
+    CAT_CAFE_MACOS_BUNDLED: '1',
+  };
+  const child = spawn('bash', [cmd, ...rest], { cwd: projectRoot, stdio: 'inherit', env });
+  child.on('exit', (code) => process.exit(code ?? 1));
+} else if (IS_WINDOWS) {
   // Map Unix-style flags to PowerShell switch params
   const flagMap = { '--debug': '-Debug', '--quick': '-Quick', '--memory': '-Memory', '--dev': '-Dev' };
   const psArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolve(__dirname, 'start-windows.ps1')];

@@ -13,7 +13,7 @@
 export type MessageOrigin = 'callback' | 'agent' | 'system';
 
 export interface MessageEnvelope {
-  /** Cat identity line, e.g. "🐱 布偶猫/宪宪" */
+  /** Agent identity line, e.g. "办公智能体" */
   readonly header: string;
   /** Thread context, e.g. "T12 飞书登录bug排查 · F088" */
   readonly subtitle: string;
@@ -27,7 +27,6 @@ export interface MessageEnvelope {
 
 export interface FormatInput {
   readonly catDisplayName: string;
-  readonly catEmoji: string;
   readonly threadShortId: string;
   readonly threadTitle?: string | undefined;
   readonly featId?: string | undefined;
@@ -39,7 +38,7 @@ export interface FormatInput {
 
 export class ConnectorMessageFormatter {
   format(input: FormatInput): MessageEnvelope {
-    const header = `${input.catEmoji} ${input.catDisplayName}`;
+    const header = input.catDisplayName;
 
     // Build subtitle: "T12 飞书登录bug排查 · F088"
     let subtitle = input.threadShortId;
@@ -68,12 +67,11 @@ export class ConnectorMessageFormatter {
    */
   formatMinimal(input: {
     catDisplayName: string;
-    catEmoji: string;
     body: string;
     origin?: MessageOrigin;
   }): MessageEnvelope {
     return {
-      header: `${input.catEmoji} ${input.catDisplayName}`,
+      header: input.catDisplayName,
       subtitle: '',
       body: input.body,
       footer: new Date().toISOString().slice(11, 16),

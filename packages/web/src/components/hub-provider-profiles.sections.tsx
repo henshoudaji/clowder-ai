@@ -133,9 +133,9 @@ export function CreateApiKeyProfileSection({
           <input
             value={displayName}
             onChange={(e) => onDisplayNameChange(e.target.value)}
-            placeholder={kind === 'acp' ? 'Provider 显示名，如 agent-teams-local' : '账号显示名，如 my-glm'}
+            placeholder={kind === 'acp' ? 'Provider 显示名，如 relay-teams-local' : '账号显示名，如 my-glm'}
             autoComplete="off"
-            className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+            className="ui-input w-full rounded px-3 py-2 text-sm"
           />
           {kind === 'acp' ? (
             <>
@@ -143,27 +143,27 @@ export function CreateApiKeyProfileSection({
                 value={command}
                 onChange={(e) => onCommandChange(e.target.value)}
                 placeholder="命令，如 uv"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <textarea
                 value={args}
                 onChange={(e) => onArgsChange(e.target.value)}
                 rows={3}
-                placeholder="参数按空格分隔，例如 -m agent_teams gateway acp stdio"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                placeholder="参数按空格分隔，例如 -m relay_teams gateway acp stdio"
+                className="ui-textarea w-full rounded px-3 py-2 text-sm"
               />
               <input
                 value={cwd}
                 onChange={(e) => onCwdChange(e.target.value)}
                 placeholder="可选 cwd"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <textarea
                 value={envText}
                 onChange={(e) => onEnvTextChange(e.target.value)}
                 rows={3}
                 placeholder="可选环境变量，每行 KEY=value"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-textarea w-full rounded px-3 py-2 text-sm"
               />
               <select
                 value={modelAccessMode}
@@ -209,7 +209,7 @@ export function CreateApiKeyProfileSection({
                 onChange={(e) => onBaseUrlChange(e.target.value)}
                 placeholder="API 服务地址，如 https://api.example.com/v1"
                 autoComplete="off"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <input
                 type="password"
@@ -217,7 +217,7 @@ export function CreateApiKeyProfileSection({
                 value={apiKey}
                 onChange={(e) => onApiKeyChange(e.target.value)}
                 placeholder="sk-xxxxxxxxxxxxxxxx"
-                className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+                className="ui-input w-full rounded px-3 py-2 text-sm"
               />
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-[#6E7785]">可用模型 *</p>
@@ -300,7 +300,7 @@ export function CreateAcpModelProfileSection({
             value={displayName}
             onChange={(e) => onDisplayNameChange(e.target.value)}
             placeholder="显示名，如 gateway-default-openai"
-            className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+            className="ui-input w-full rounded px-3 py-2 text-sm"
           />
           <select
             value={provider}
@@ -318,13 +318,13 @@ export function CreateAcpModelProfileSection({
             value={model}
             onChange={(e) => onModelChange(e.target.value)}
             placeholder="模型名，如 gpt-4.1"
-            className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+            className="ui-input w-full rounded px-3 py-2 text-sm"
           />
           <input
             value={baseUrl}
             onChange={(e) => onBaseUrlChange(e.target.value)}
             placeholder="Base URL，如 https://api.openai.com/v1"
-            className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+            className="ui-input w-full rounded px-3 py-2 text-sm"
           />
           <input
             type="password"
@@ -332,7 +332,7 @@ export function CreateAcpModelProfileSection({
             value={apiKey}
             onChange={(e) => onApiKeyChange(e.target.value)}
             placeholder="API Key"
-            className="w-full rounded border border-[#DCE2EB] bg-white px-3 py-2 text-sm placeholder:text-[#A8B0BD]"
+            className="ui-input w-full rounded px-3 py-2 text-sm"
           />
           <button
             type="button"

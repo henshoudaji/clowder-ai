@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 from typing import Any, Literal
 
 from dare_framework.infra.component import ComponentType
 from dare_framework.model.kernel import IModelAdapter
 from dare_framework.model.types import GenerateOptions, ModelInput, ModelResponse
 from dare_framework.tool.types import CapabilityDescriptor
+
+_logger = logging.getLogger(__name__)
+_DIAG_ENV = "DARE_MODEL_ADAPTER_DIAG_LOG"
 
 
 class OpenRouterModelAdapter(IModelAdapter):
@@ -54,6 +59,17 @@ class OpenRouterModelAdapter(IModelAdapter):
         *,
         options: GenerateOptions | None = None,
     ) -> ModelResponse:
+        _emit_diag(
+            {
+                "event": "generate.start",
+                "adapter": self._name,
+                "model": self._model,
+                "base_url": self._base_url,
+                "message_count": len(model_input.messages),
+                "tool_count": len(model_input.tools or []),
+                "tool_names": [str(getattr(tool, "name", "")) for tool in (model_input.tools or [])][:50],
+            }
+        )
         client = self._ensure_client()
         messages = _serialize_messages(model_input.messages)
 
@@ -86,6 +102,7 @@ class OpenRouterModelAdapter(IModelAdapter):
             if options.stop is not None:
                 api_params["stop"] = options.stop
 
+        start = time.perf_counter()
         response = await client.chat.completions.create(**api_params)
         message = response.choices[0].message
         content = message.content or ""
@@ -105,7 +122,7 @@ class OpenRouterModelAdapter(IModelAdapter):
                 usage = {}
             usage["reasoning_tokens"] = reasoning_tokens
 
-        return ModelResponse(
+        model_response = ModelResponse(
             content=content,
             tool_calls=tool_calls,
             usage=usage,
@@ -115,6 +132,19 @@ class OpenRouterModelAdapter(IModelAdapter):
                 "finish_reason": response.choices[0].finish_reason,
             },
         )
+        _emit_diag(
+            {
+                "event": "generate.end",
+                "adapter": self._name,
+                "model": self._model,
+                "latency_ms": round((time.perf_counter() - start) * 1000.0, 2),
+                "content_len": len(model_response.content or ""),
+                "tool_call_count": len(model_response.tool_calls or []),
+                "tool_calls": [_summarize_tool_call(call) for call in (model_response.tool_calls or [])[:20]],
+                "usage": model_response.usage or {},
+            }
+        )
+        return model_response
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -317,6 +347,29 @@ def _extract_reasoning_tokens(response: Any) -> int | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _summarize_tool_call(call: Any) -> dict[str, Any]:
+    if not isinstance(call, dict):
+        return {"type": type(call).__name__}
+    arguments = call.get("arguments")
+    arg_keys = sorted(str(k) for k in arguments.keys())[:20] if isinstance(arguments, dict) else []
+    return {
+        "id": call.get("id"),
+        "name": call.get("name"),
+        "arg_type": type(arguments).__name__,
+        "arg_keys": arg_keys,
+    }
+
+
+def _emit_diag(payload: dict[str, Any]) -> None:
+    raw = os.getenv(_DIAG_ENV, "0").strip().lower()
+    if raw in {"0", "false", "off"}:
+        return
+    try:
+        _logger.debug("[model-adapter] %s", json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        pass
 
 
 def _get_nested_value(value: Any, key: str) -> Any:

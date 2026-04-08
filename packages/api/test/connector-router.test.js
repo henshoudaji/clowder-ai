@@ -75,10 +75,15 @@ function mockTrigger() {
 
 function mockSocketManager() {
   const broadcasts = [];
+  const emitted = [];
   return {
     broadcasts,
+    emitted,
     broadcastToRoom(room, event, data) {
       broadcasts.push({ room, event, data });
+    },
+    emitToUser(userId, event, data) {
+      emitted.push({ userId, event, data });
     },
   };
 }
@@ -118,6 +123,13 @@ describe('ConnectorRouter', () => {
     assert.equal(result.kind, 'routed');
     assert.ok(result.threadId);
     assert.ok(result.messageId);
+    assert.deepEqual(socketManager.emitted, [
+      {
+        userId: 'owner-1',
+        event: 'thread_created',
+        data: { threadId: result.threadId, source: 'connector_auto' },
+      },
+    ]);
 
     // Binding should exist
     const binding = bindingStore.getByExternal('feishu', 'chat-123');
@@ -347,9 +359,9 @@ describe('ConnectorRouter', () => {
       assert.notEqual(hubThreadId, 'thread-conv-bc');
       assert.equal(ctxSocket.broadcasts.length, 2);
       assert.equal(ctxSocket.broadcasts[0].room, `thread:${hubThreadId}`);
-      assert.equal(ctxSocket.broadcasts[0].data.connectorId, 'feishu');
+      assert.equal(ctxSocket.broadcasts[0].data.message.source.connector, 'feishu');
       assert.equal(ctxSocket.broadcasts[1].room, `thread:${hubThreadId}`);
-      assert.equal(ctxSocket.broadcasts[1].data.connectorId, 'system-command');
+      assert.equal(ctxSocket.broadcasts[1].data.message.source.connector, 'system-command');
     });
 
     it('/thread command forwards message to target thread and triggers invocation', async () => {

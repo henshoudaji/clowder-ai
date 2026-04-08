@@ -148,6 +148,42 @@ describe('F137 Phase C — WeixinQrPanel', () => {
     expect(queryTestId(container, 'weixin-connected')).not.toBeNull();
   });
 
+  it('calls onConfigured after QR confirmation succeeds', async () => {
+    const onConfigured = vi.fn();
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse({ qrUrl: 'https://example.com/qr.png', qrPayload: 'abc123' }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'confirmed' }));
+
+    await act(async () => {
+      root.render(React.createElement(WeixinQrPanel, { configured: false, onConfigured }));
+    });
+    await flushEffects();
+
+    await act(async () => {
+      queryButton(container, 'Generate QR Code').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flushEffects();
+
+    expect(onConfigured).toHaveBeenCalledTimes(1);
+    expect(queryTestId(container, 'weixin-connected')).not.toBeNull();
+  });
+
+  it('syncs to connected state when configured prop flips to true', async () => {
+    await act(async () => {
+      root.render(React.createElement(WeixinQrPanel, { configured: false }));
+    });
+    await flushEffects();
+
+    expect(queryTestId(container, 'weixin-generate-qr')).not.toBeNull();
+
+    await act(async () => {
+      root.render(React.createElement(WeixinQrPanel, { configured: true }));
+    });
+    await flushEffects();
+
+    expect(queryTestId(container, 'weixin-connected')).not.toBeNull();
+  });
+
   it('shows expired state after 60s timeout and allows regeneration', async () => {
     mockApiFetch
       .mockResolvedValueOnce(jsonResponse({ qrUrl: 'https://example.com/qr.png', qrPayload: 'abc123' }))

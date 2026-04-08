@@ -1,15 +1,79 @@
 'use client';
 
-import { Children, type ReactNode, useCallback, useRef, useState } from 'react';
+import { Children, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
-import { getMentionColor, getMentionRe, getMentionToCat } from '@/lib/mention-highlight';
+import { getMentionColor, getMentionLabel, getMentionRe, getMentionToCat } from '@/lib/mention-highlight';
 import { useChatStore } from '@/stores/chatStore';
+import { fetchSkillOptionsWithCache, getCachedSkillOptions } from '@/utils/skill-options-cache';
 
-/* ── @mention highlighting ─────────────────────────────────── */
+function renderSkillToken(skillName: string, key: string): ReactNode {
+  return (
+    <span
+      key={key}
+      className="inline-flex max-w-full translate-y-[-1px] items-center gap-1 rounded px-1 py-[1px] align-middle text-[rgba(20,118,255,1)]"
+      data-skill-token="true"
+    >
+      <span
+        aria-hidden="true"
+        className="inline-block h-3.5 w-3.5 shrink-0"
+        style={{
+          backgroundColor: 'currentColor',
+          maskImage: "url('/icons/menu/skills.svg')",
+          maskRepeat: 'no-repeat',
+          maskPosition: 'center',
+          maskSize: 'contain',
+          WebkitMaskImage: "url('/icons/menu/skills.svg')",
+          WebkitMaskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'center',
+          WebkitMaskSize: 'contain',
+        }}
+      />
+      <span className="truncate">{skillName}</span>
+    </span>
+  );
+}
 
-function highlightMentions(text: string): ReactNode[] {
+function appendTextWithSkills(parts: ReactNode[], text: string, keyPrefix: string, skillNames: string[]): void {
+  if (!text) return;
+  if (skillNames.length === 0) {
+    parts.push(text);
+    return;
+  }
+
+  const sortedSkills = [...skillNames].sort((a, b) => b.length - a.length);
+  let cursor = 0;
+  let plainStart = 0;
+
+  while (cursor < text.length) {
+    let matchedSkill: string | null = null;
+    for (const skillName of sortedSkills) {
+      if (!skillName) continue;
+      if (!text.startsWith(skillName, cursor)) continue;
+      const prev = cursor > 0 ? text[cursor - 1] : ' ';
+      const next = cursor + skillName.length < text.length ? text[cursor + skillName.length] : ' ';
+      if (/\s/.test(prev) && /\s/.test(next)) {
+        matchedSkill = skillName;
+        break;
+      }
+    }
+
+    if (!matchedSkill) {
+      cursor += 1;
+      continue;
+    }
+
+    if (cursor > plainStart) parts.push(text.slice(plainStart, cursor));
+    parts.push(renderSkillToken(matchedSkill, `${keyPrefix}-s${cursor}`));
+    cursor += matchedSkill.length;
+    plainStart = cursor;
+  }
+
+  if (plainStart < text.length) parts.push(text.slice(plainStart));
+}
+
+function highlightMentionsAndSkills(text: string, skillNames: string[]): ReactNode[] {
   const parts: ReactNode[] = [];
   let lastIdx = 0;
   let m: RegExpExecArray | null;
@@ -17,41 +81,46 @@ function highlightMentions(text: string): ReactNode[] {
   const re = getMentionRe();
   const toCat = getMentionToCat();
   const colorMap = getMentionColor();
+  const labelMap = getMentionLabel();
 
   re.lastIndex = 0;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > lastIdx) parts.push(text.slice(lastIdx, m.index));
+    if (m.index > lastIdx) {
+      appendTextWithSkills(parts, text.slice(lastIdx, m.index), `p${m.index}`, skillNames);
+    }
     const catId = toCat[m[1].toLowerCase()] ?? 'opus';
     const catColor = colorMap[catId] ?? '#9B7EBD';
+    const label = labelMap[m[1].toLowerCase()] ?? m[0];
     const r = Number.parseInt(catColor.slice(1, 3), 16);
     const g = Number.parseInt(catColor.slice(3, 5), 16);
     const b = Number.parseInt(catColor.slice(5, 7), 16);
     parts.push(
       <span
         key={`m${m.index}`}
-        className="font-semibold"
+        className="font-semibold user-question-mention"
         style={{
-          color: catColor,
-          backgroundColor: `rgba(${r}, ${g}, ${b}, 0.15)`,
+          color: 'rgb(20, 118, 255)',
           borderRadius: 4,
           padding: '1px 5px',
         }}
       >
-        {m[0]}
+        {label}
       </span>,
     );
     lastIdx = re.lastIndex;
   }
-  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+  if (lastIdx < text.length) {
+    appendTextWithSkills(parts, text.slice(lastIdx), `tail${lastIdx}`, skillNames);
+  }
   return parts;
 }
 
-/** Process immediate string children → highlight @mentions */
-function withMentions(children: ReactNode): ReactNode {
-  return Children.map(children, (child) => (typeof child === 'string' ? highlightMentions(child) : child));
+function withMentions(children: ReactNode, skillNames: string[]): ReactNode {
+  return Children.map(children, (child) =>
+    typeof child === 'string' ? highlightMentionsAndSkills(child, skillNames) : child,
+  );
 }
 
-/* ── Code block with copy button ───────────────────────────── */
 function CodeBlock({ children }: { children: ReactNode }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -83,7 +152,6 @@ function CodeBlock({ children }: { children: ReactNode }) {
   );
 }
 
-/* ── File path → VSCode link ──────────────────────────────── */
 const PROJECT_ROOT = process.env.NEXT_PUBLIC_PROJECT_ROOT ?? '';
 const FILE_PATH_RE = /(?:^|\s)`?((?:\/[\w.@-]+)+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
 const REL_PATH_RE = /(?:^|\s)`?((?:packages|src|docs|tests?)\/[\w./@-]+(?:\.[\w]+)(?::(\d+))?)(?:`?)/g;
@@ -106,12 +174,10 @@ function linkifyFilePaths(text: string): ReactNode[] {
     const start = m.index + leading.length;
     if (start > lastIdx) parts.push(text.slice(lastIdx, start));
 
-    // Check for [wt:ID] tag immediately after the match
     const afterMatch = text.slice(m.index + fullMatch.length);
     const wtMatch = afterMatch.match(WT_TAG_RE);
     const worktreeId = wtMatch?.[1] ?? undefined;
 
-    // Strip backticks from display
     const display = path;
     const isAbsolute = path.startsWith('/');
     const filePath = path.split(':')[0];
@@ -134,7 +200,7 @@ function linkifyFilePaths(text: string): ReactNode[] {
         </span>
       ),
     );
-    // Skip past the [wt:ID] tag so it's not rendered as visible text
+
     if (wtMatch) {
       lastIdx = m.index + fullMatch.length + wtMatch[0].length;
       combined.lastIndex = lastIdx;
@@ -146,7 +212,6 @@ function linkifyFilePaths(text: string): ReactNode[] {
   return parts.length > 0 ? parts : [text];
 }
 
-/** F063: File path link — click opens in workspace panel, Cmd/Ctrl+click opens in VSCode */
 function FilePathLink({
   display,
   href,
@@ -164,10 +229,8 @@ function FilePathLink({
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      // Cmd/Ctrl+click → VSCode (default link behavior)
       if (e.metaKey || e.ctrlKey) return;
       e.preventDefault();
-      // Regular click → open in workspace panel (with optional worktree switch)
       setOpenFile(filePath, line ?? null, worktreeId ?? null);
     },
     [setOpenFile, filePath, line, worktreeId],
@@ -185,85 +248,78 @@ function FilePathLink({
   );
 }
 
-/** Process string children → @mentions + file path links */
-function withMentionsAndLinks(children: ReactNode): ReactNode {
+function withMentionsAndLinks(children: ReactNode, skillNames: string[]): ReactNode {
   return Children.map(children, (child) => {
     if (typeof child !== 'string') return child;
-    // First pass: file paths → ReactNode[]
     const linked = linkifyFilePaths(child);
-    // Second pass: highlight @mentions in remaining text nodes
     return (
-      <>{linked.map((node, i) => (typeof node === 'string' ? <span key={i}>{highlightMentions(node)}</span> : node))}</>
+      <>
+        {linked.map((node, i) =>
+          typeof node === 'string' ? <span key={i}>{highlightMentionsAndSkills(node, skillNames)}</span> : node,
+        )}
+      </>
     );
   });
 }
 
-/* ── Markdown component overrides ──────────────────────────── */
-const mdComponents: Components = {
-  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{withMentionsAndLinks(children)}</p>,
-  strong: ({ children }) => <strong className="font-semibold">{withMentions(children)}</strong>,
-  em: ({ children }) => <em>{withMentions(children)}</em>,
-  del: ({ children }) => <del className="opacity-60">{withMentions(children)}</del>,
+function createMdComponents(skillNames: string[]): Components {
+  return {
+    p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{withMentionsAndLinks(children, skillNames)}</p>,
+    strong: ({ children }) => <strong className="font-semibold">{withMentions(children, skillNames)}</strong>,
+    em: ({ children }) => <em>{withMentions(children, skillNames)}</em>,
+    del: ({ children }) => <del className="opacity-60">{withMentions(children, skillNames)}</del>,
 
-  h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{withMentions(children)}</h1>,
-  h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{withMentions(children)}</h2>,
-  h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2 first:mt-0">{withMentions(children)}</h3>,
+    h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{withMentions(children, skillNames)}</h1>,
+    h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{withMentions(children, skillNames)}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2 first:mt-0">{withMentions(children, skillNames)}</h3>,
 
-  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-0.5">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-0.5">{children}</ol>,
-  li: ({ children }) => <li>{withMentions(children)}</li>,
+    ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-0.5">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-0.5">{children}</ol>,
+    li: ({ children }) => <li>{withMentions(children, skillNames)}</li>,
 
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-[3px] border-gray-300 pl-3 my-2 italic opacity-80">{children}</blockquote>
-  ),
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
-      {withMentions(children)}
-    </a>
-  ),
-  hr: () => <hr className="my-3 border-gray-200" />,
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-[3px] border-gray-300 pl-3 my-2 italic opacity-80">{children}</blockquote>
+    ),
+    a: ({ href, children }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+        {withMentions(children, skillNames)}
+      </a>
+    ),
+    hr: () => <hr className="my-3 border-gray-200" />,
 
-  /* Code blocks with copy button */
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-  code: ({ className, children }) => (
-    <code className={`${className ?? ''} bg-gray-200/50 rounded px-1 py-0.5 text-[0.85em] font-mono`}>{children}</code>
-  ),
+    pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+    code: ({ className, children }) => (
+      <code className={`${className ?? ''} bg-gray-200/50 rounded px-1 py-0.5 text-[0.85em] font-mono`}>{children}</code>
+    ),
 
-  /* Tables (GFM) */
-  table: ({ children }) => (
-    <div className="overflow-x-auto my-2">
-      <table className="min-w-full text-sm border-collapse">{children}</table>
-    </div>
-  ),
-  thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
-  th: ({ children }) => (
-    <th className="border border-gray-300 px-2 py-1 text-left font-semibold text-xs">{withMentions(children)}</th>
-  ),
-  td: ({ children }) => <td className="border border-gray-300 px-2 py-1">{withMentions(children)}</td>,
-};
+    table: ({ children }) => (
+      <div className="overflow-x-auto my-2">
+        <table className="min-w-full text-sm border-collapse">{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
+    th: ({ children }) => (
+      <th className="border border-gray-300 px-2 py-1 text-left font-semibold text-xs">{withMentions(children, skillNames)}</th>
+    ),
+    td: ({ children }) => <td className="border border-gray-300 px-2 py-1">{withMentions(children, skillNames)}</td>,
+  };
+}
 
-/* ── Exported component ────────────────────────────────────── */
 interface Props {
   content: string;
   className?: string;
-  /** Skip slash-command prefix detection (e.g. for rich block bodyMarkdown) */
   disableCommandPrefix?: boolean;
-  /** Base directory path for resolving relative links (e.g. "docs/features") */
   basePath?: string;
 }
 
-/** Check if href is a relative markdown link (not absolute, not external) */
 export function isRelativeMdLink(href: string | undefined): href is string {
   if (!href) return false;
   if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('/')) return false;
   return /\.mdx?(?:#|$)/.test(href);
 }
 
-/** Resolve a relative path against a base directory */
 export function resolveRelativePath(base: string, relative: string): string {
-  // Strip fragment/hash
   const clean = relative.split('#')[0];
-  // base is the directory of the current file (e.g. "docs/features")
   const parts = base ? base.split('/') : [];
   for (const seg of clean.split('/')) {
     if (seg === '..') parts.pop();
@@ -273,10 +329,31 @@ export function resolveRelativePath(base: string, relative: string): string {
 }
 
 export function MarkdownContent({ content, className, disableCommandPrefix, basePath }: Props) {
+  const [skillNames, setSkillNames] = useState<string[]>(() =>
+    (getCachedSkillOptions() ?? []).map((item) => item.name),
+  );
+
+  useEffect(() => {
+    let active = true;
+    void fetchSkillOptionsWithCache().then((options) => {
+      if (!active) return;
+      setSkillNames(options.map((item) => item.name));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const cmdMatch = disableCommandPrefix ? null : /^(\/\w+)/.exec(content);
   const md = cmdMatch ? content.slice(cmdMatch[1].length) : content;
 
-  const components = basePath != null ? { ...mdComponents, a: createWorkspaceLinkComponent(basePath) } : mdComponents;
+  const components = useMemo(() => {
+    const baseComponents = createMdComponents(skillNames);
+    return basePath != null
+      ? { ...baseComponents, a: createWorkspaceLinkComponent(basePath, skillNames) }
+      : baseComponents;
+  }, [basePath, skillNames]);
 
   return (
     <div
@@ -291,8 +368,7 @@ export function MarkdownContent({ content, className, disableCommandPrefix, base
   );
 }
 
-/** Create an `a` override that intercepts relative .md links → workspace navigation */
-function createWorkspaceLinkComponent(basePath: string): Components['a'] {
+function createWorkspaceLinkComponent(basePath: string, skillNames: string[]): Components['a'] {
   return function WorkspaceLink({ href, children }) {
     const setOpenFile = useChatStore((s) => s.setWorkspaceOpenFile);
 
@@ -308,14 +384,14 @@ function createWorkspaceLinkComponent(basePath: string): Components['a'] {
           className="text-blue-500 hover:text-blue-400 hover:underline break-all cursor-pointer"
           title={`在工作区中打开 ${resolved}`}
         >
-          {withMentions(children)}
+          {withMentions(children, skillNames)}
         </a>
       );
     }
 
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
-        {withMentions(children)}
+        {withMentions(children, skillNames)}
       </a>
     );
   };

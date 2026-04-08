@@ -57,7 +57,7 @@ export function HubAcpModelProfileItem({
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="显示名"
-          className="w-full rounded border border-[#D9D6F5] bg-white px-3 py-2 text-sm"
+          className="ui-input w-full rounded px-3 py-2 text-sm"
         />
         <select
           value={provider}
@@ -74,13 +74,13 @@ export function HubAcpModelProfileItem({
           value={model}
           onChange={(e) => setModel(e.target.value)}
           placeholder="模型名"
-          className="w-full rounded border border-[#D9D6F5] bg-white px-3 py-2 text-sm"
+          className="ui-input w-full rounded px-3 py-2 text-sm"
         />
         <input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="Base URL"
-          className="w-full rounded border border-[#D9D6F5] bg-white px-3 py-2 text-sm"
+          className="ui-input w-full rounded px-3 py-2 text-sm"
         />
         <input
           type="password"
@@ -88,7 +88,7 @@ export function HubAcpModelProfileItem({
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder={profile.hasApiKey ? '已配置（留空保持不变）' : 'API Key'}
-          className="w-full rounded border border-[#D9D6F5] bg-white px-3 py-2 text-sm"
+          className="ui-input w-full rounded px-3 py-2 text-sm"
         />
         <div className="flex gap-2">
           <button

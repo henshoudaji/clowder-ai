@@ -48,6 +48,11 @@ export function useChatSocketCallbacks({
         handleAgentMessage(msg);
         return true;
       },
+      onThreadCreated: () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('cat-cafe:threads-refresh'));
+        }
+      },
       onThreadUpdated: (data) => updateThreadTitle(data.threadId, data.title),
       onIntentMode: (data) => {
         // Socket layer (useSocket) already applies dual-pointer guard + background routing.

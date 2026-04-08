@@ -2477,16 +2477,16 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       }
       catRegistry.register('agentteams', {
         ...originalConfig,
-        provider: 'relayclaw',
+        provider: 'acp',
         accountRef: 'my-openai-proxy',
         defaultModel: 'mimo-v2-flash',
         embeddedAcpConfig: {
           executablePath: 'tools/python/python.exe',
-          args: ['--trace', '-m', 'agent_teams', 'gateway', 'acp', 'stdio'],
-          cwd: '/tmp/custom-agent-teams',
+          args: ['--trace', '-m', 'relay_teams', 'gateway', 'acp', 'stdio'],
+          cwd: '/tmp/custom-relay-teams',
           env: {
             ACP_TRACE_STDIO: '1',
-            AGENT_TEAMS_LOG_LEVEL: 'debug',
+            RELAY_TEAMS_LOG_LEVEL: 'debug',
           },
         },
       });
@@ -2526,11 +2526,11 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       const acpModelProfile = optionsSeen[0]?.acpModelProfile ?? null;
       assert.equal(providerProfile?.kind, 'acp');
       assert.match(String(providerProfile?.command ?? ''), /python\.exe$/i);
-      assert.deepEqual(providerProfile?.args, ['--trace', '-m', 'agent_teams', 'gateway', 'acp', 'stdio']);
-      assert.equal(providerProfile?.cwd, '/tmp/custom-agent-teams');
+      assert.deepEqual(providerProfile?.args, ['--trace', '-m', 'relay_teams', 'gateway', 'acp', 'stdio']);
+      assert.equal(providerProfile?.cwd, '/tmp/custom-relay-teams');
       assert.deepEqual(providerProfile?.env, {
         ACP_TRACE_STDIO: '1',
-        AGENT_TEAMS_LOG_LEVEL: 'debug',
+        RELAY_TEAMS_LOG_LEVEL: 'debug',
       });
       assert.equal(acpModelProfile?.provider, 'openai_compatible');
       assert.equal(acpModelProfile?.model, 'mimo-v2-flash');
@@ -2547,6 +2547,155 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       else process.env.CAT_TEMPLATE_PATH = previousTemplatePath;
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('ACP: builds embedded Agent Teams model override from Huawei MaaS system sources', async () => {
+    const { sessions } = await import('../dist/routes/auth.js');
+    const root = await mkdtemp(join(tmpdir(), 'embedded-agentteams-huawei-maas-'));
+    const apiDir = join(root, 'packages', 'api');
+    await mkdir(apiDir, { recursive: true });
+    await mkdir(join(root, '.cat-cafe'), { recursive: true });
+    await mkdir(join(root, 'tools', 'python'), { recursive: true });
+    await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
+    await writeFile(join(root, 'tools', 'python', 'python.exe'), '', 'utf-8');
+    await writeFile(
+      join(root, '.cat-cafe', 'model.json'),
+      `${JSON.stringify({ 'huawei-maas': [{ id: 'glm-5' }, { id: 'qwen3-32b' }] }, null, 2)}\n`,
+      'utf-8',
+    );
+
+    const previousGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    const previousTemplatePath = process.env.CAT_TEMPLATE_PATH;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+    process.env.CAT_TEMPLATE_PATH = fileURLToPath(new URL('../../../cat-template.json', import.meta.url));
+
+    try {
+      sessions.set('user-agentteams-huawei-maas', {
+        userId: 'user-agentteams-huawei-maas',
+        token: 'iam-token',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        credential: {},
+        modelInfo: {
+          model_api_url_base: 'api.modelarts-maas.com',
+          model_auth_info: {
+            model_app_key: 'app-key',
+            model_app_secret: 'app-secret',
+          },
+        },
+      });
+
+      const registrySnapshot = catRegistry.getAllConfigs();
+      const originalConfig = catRegistry.tryGet('agentteams')?.config;
+      assert.ok(originalConfig, 'agentteams config should exist in registry');
+      catRegistry.reset();
+      for (const [id, config] of Object.entries(registrySnapshot)) {
+        if (id === 'agentteams') continue;
+        catRegistry.register(id, config);
+      }
+      catRegistry.register('agentteams', {
+        ...originalConfig,
+        provider: 'acp',
+        accountRef: 'huawei-maas',
+        defaultModel: 'glm-5',
+        embeddedAcpConfig: {
+          executablePath: 'tools/python/python.exe',
+          args: ['--trace', '-m', 'relay_teams', 'gateway', 'acp', 'stdio'],
+          cwd: '/tmp/custom-relay-teams',
+          env: {
+            ACP_TRACE_STDIO: '1',
+            RELAY_TEAMS_LOG_LEVEL: 'debug',
+          },
+        },
+      });
+
+      const optionsSeen = [];
+      const service = {
+        async *invoke(_prompt, options) {
+          optionsSeen.push(options ?? {});
+          yield { type: 'done', catId: 'agentteams', timestamp: Date.now() };
+        },
+      };
+
+      const deps = makeDeps();
+      const previousCwd = process.cwd();
+      try {
+        process.chdir(apiDir);
+        const messages = await collect(
+          invokeSingleCat(deps, {
+            catId: 'agentteams',
+            service,
+            prompt: 'test',
+            userId: 'user-agentteams-huawei-maas',
+            threadId: 'thread-agentteams-huawei-maas',
+            isLastCat: true,
+          }),
+        );
+        assert.ok(messages.some((m) => m.type === 'done'));
+      } finally {
+        process.chdir(previousCwd);
+        sessions.delete('user-agentteams-huawei-maas');
+        catRegistry.reset();
+        for (const [id, config] of Object.entries(registrySnapshot)) {
+          catRegistry.register(id, config);
+        }
+      }
+
+      const providerProfile = optionsSeen[0]?.providerProfile ?? null;
+      const acpModelProfile = optionsSeen[0]?.acpModelProfile ?? null;
+      assert.equal(providerProfile?.kind, 'acp');
+      assert.equal(acpModelProfile?.provider, 'openai_compatible');
+      assert.equal(acpModelProfile?.model, 'glm-5');
+      assert.equal(acpModelProfile?.baseUrl, 'https://api.modelarts-maas.com/v2');
+      assert.equal(acpModelProfile?.apiKey, 'huawei-maas-session');
+      assert.deepEqual(acpModelProfile?.headers, {
+        Authorization: 'Basic YXBwLWtleTphcHAtc2VjcmV0',
+      });
+    } finally {
+      if (previousGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = previousGlobalRoot;
+      if (previousTemplatePath === undefined) delete process.env.CAT_TEMPLATE_PATH;
+      else process.env.CAT_TEMPLATE_PATH = previousTemplatePath;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps relayclaw query on the clean user task and moves orchestration context into systemPrompt', async () => {
+    const seen = [];
+    const service = {
+      async *invoke(prompt, options) {
+        seen.push({ prompt, options: options ?? {} });
+        yield { type: 'done', catId: 'jiuwenclaw', timestamp: Date.now() };
+      },
+    };
+
+    const orchestratedPrompt = [
+      '## Dispatch Mission Context',
+      '',
+      'mission:    @office 帮我做一页 PPT',
+      '',
+      '[对话历史增量 - 未发送过 1 条]',
+      '[msg-1] [00:18 铲屎官] @office 帮我做一页 PPT',
+      '[/对话历史]',
+    ].join('\n');
+
+    await collect(
+      invokeSingleCat(makeDeps(), {
+        catId: 'jiuwenclaw',
+        service,
+        prompt: orchestratedPrompt,
+        userPrompt: '帮我做一页 PPT',
+        userId: 'user-relayclaw-query-split',
+        threadId: 'thread-relayclaw-query-split',
+        systemPrompt: 'Identity: 办公智能体/office',
+        isLastCat: true,
+      }),
+    );
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].prompt, '帮我做一页 PPT');
+    assert.match(String(seen[0].options.systemPrompt ?? ''), /Identity: 办公智能体\/office/);
+    assert.match(String(seen[0].options.systemPrompt ?? ''), /Dispatch Mission Context/);
+    assert.match(String(seen[0].options.systemPrompt ?? ''), /对话历史增量/);
   });
 
   it('F053: Gemini (sessionChain=true) skips systemPrompt on resume like other cats', async () => {

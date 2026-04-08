@@ -248,6 +248,7 @@ describe('background thread socket handling', () => {
         content: 'callback note',
         origin: 'callback',
         messageId: 'msg-callback-1',
+        invocationId: 'inv-bg-1',
         timestamp: Date.now(),
       });
 
@@ -255,6 +256,7 @@ describe('background thread socket handling', () => {
       expect(ts.messages).toHaveLength(1);
       expect(ts.messages[0]?.id).toBe('msg-callback-1');
       expect(ts.messages[0]?.origin).toBe('callback');
+      expect(ts.messages[0]?.extra).toEqual({ stream: { invocationId: 'inv-bg-1' } });
     });
 
     it('callback-origin text replaces overlapping background stream bubble from the same invocation', () => {
@@ -580,9 +582,66 @@ describe('background thread socket handling', () => {
       const ts = useChatStore.getState().getThreadState('thread-bg');
       const merged = ts.messages.find((m) => m.id === messageId);
       expect(merged?.isStreaming).toBe(false);
-      const errorMsg = ts.messages.find((m) => m.type === 'system' && m.content.includes('Error: oops'));
-      expect(errorMsg?.variant).toBe('error');
+      const errorMsg = ts.messages.find((m) => m.type === 'assistant' && m.catId === 'opus');
+      expect(errorMsg?.content).not.toContain('oops');
       expect(testBgStreamRefs.has(streamKey)).toBe(false);
+    });
+
+    it('rewrites dare cli timeout in background threads to a user-friendly fallback', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'error',
+        catId: 'dare',
+        threadId: 'thread-bg',
+        error: 'DARE CLI 响应超时 (1800s)',
+        metadata: { provider: 'dare', model: 'test/model' },
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      const errorMsg = ts.messages.find((m) => m.type === 'assistant' && m.catId === 'dare');
+      expect(errorMsg?.content).toContain('这次响应花了太久');
+      const toast = useToastStore.getState().toasts.at(-1);
+      expect(toast?.message).toContain('这次响应花了太久');
+    });
+
+    it('rewrites jiuwen connection failure in background threads to a user-friendly fallback', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'error',
+        catId: 'jiuwenclaw',
+        threadId: 'thread-bg',
+        error: 'jiuwen connection failed: sidecar exited during startup',
+        metadata: { provider: 'relayclaw', model: 'test/model' },
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      const errorMsg = ts.messages.find((m) => m.type === 'assistant' && m.catId === 'jiuwenclaw');
+      expect(errorMsg?.content).toContain('连接不稳定');
+      const toast = useToastStore.getState().toasts.at(-1);
+      expect(toast?.message).toContain('连接不稳定');
+    });
+
+    it('rewrites unknown background errors to a generic assistant fallback', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'error',
+        catId: 'opus',
+        threadId: 'thread-bg',
+        error: 'raw upstream failure details',
+        metadata: { provider: 'claude', model: 'test/model' },
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      const errorMsg = ts.messages.find((m) => m.type === 'assistant' && m.catId === 'opus');
+      expect(errorMsg?.content).not.toContain('raw upstream failure details');
+      const toast = useToastStore.getState().toasts.at(-1);
+      expect(toast?.message).not.toContain('raw upstream failure details');
     });
 
     it('active non-terminal event must not clear background ref needed by later background done', () => {
@@ -894,6 +953,42 @@ describe('background thread socket handling', () => {
       expect(ts.messages[1]?.variant).toBe('info');
       expect(ts.messages[2]?.variant).toBe('a2a_followup');
       expect(ts.messages[2]?.content).toContain('缅因猫 @了 opus');
+    });
+
+    it('consumes processing_status system_info silently and updates background cat status', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'system_info',
+        catId: 'codex',
+        threadId: 'thread-bg',
+        content: JSON.stringify({
+          type: 'processing_status',
+          status: 'thinking',
+        }),
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      expect(ts.messages).toHaveLength(0);
+      expect(ts.catStatuses.codex).toBe('streaming');
+    });
+
+    it('consumes pseudo-object thinking system_info silently in background threads', () => {
+      const now = Date.now();
+
+      simulateBackgroundMessage({
+        type: 'system_info',
+        catId: 'office',
+        threadId: 'thread-bg',
+        content: 'type: thinking, catId: office, text: 流程',
+        timestamp: now,
+      });
+
+      const ts = useChatStore.getState().getThreadState('thread-bg');
+      expect(ts.messages).toHaveLength(1);
+      expect(ts.messages[0]?.type).toBe('assistant');
+      expect(ts.messages[0]?.thinking).toBe('流程');
     });
 
     it('consumes invocation_usage system_info into thread invocation + message metadata (no raw JSON message)', () => {

@@ -78,8 +78,8 @@ function buildScriptPrompt(request: PodcastRequest): string {
 ## 要求
 - 模式: ${request.mode === 'essence' ? '精华版' : '深度版'}（目标时长 ${durationLabel}，totalDuration ≈ ${targetDuration} 秒）
 - 段落数: ${range.min}-${range.max} 段
-- 说话人: 宪宪（主持，布偶猫）和 砚砚（嘉宾，缅因猫）
-- 风格: 自然对话，像两只猫在茶几旁讨论文章。要有互动感和思考深度。
+- 说话人: 小九（主持，办公智能体）和 小理（嘉宾，通用智能体）
+- 风格: 自然对话，像两位同事在茶几旁讨论文章。要有互动感和思考深度。
 - **每段文字量要求：每段至少 80-200 字**（不是大纲式一句话！要有具体分析、案例、数据引用）
 - 每段 durationEstimate 用秒（根据文字量估算，中文约 3 字/秒）
 - 精华版：提炼核心观点和关键 takeaway，但每个观点要**展开讨论**，不要只列要点
@@ -96,7 +96,7 @@ ${request.articleContent.slice(0, 12000)}${
 }
 
 ## 输出格式（严格 JSON，不要 markdown 代码块）
-{"segments":[{"speaker":"宪宪","text":"...","durationEstimate":30},{"speaker":"砚砚","text":"...","durationEstimate":25}],"totalDuration":${targetDuration}}`;
+{"segments":[{"speaker":"小九","text":"...","durationEstimate":30},{"speaker":"小理","text":"...","durationEstimate":25}],"totalDuration":${targetDuration}}`;
 }
 
 function parseScriptResponse(raw: string, mode: PodcastRequest['mode']): PodcastScript {
@@ -224,8 +224,8 @@ async function generateScriptViaLLM(request: PodcastRequest): Promise<PodcastScr
 }
 
 const SPEAKER_TO_CAT: Record<string, string> = {
-  宪宪: 'opus',
-  砚砚: 'codex',
+  小九: 'opus',
+  小理: 'codex',
 };
 
 /**

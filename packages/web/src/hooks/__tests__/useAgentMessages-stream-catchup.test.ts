@@ -220,6 +220,29 @@ describe('useAgentMessages stream catch-up (Bug C safety net)', () => {
     expect(mockRequestStreamCatchUp).not.toHaveBeenCalled();
   });
 
+  it('stores invocationId on callback-only bubbles for later thread-switch reconciliation', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'text',
+        catId: 'opus',
+        origin: 'callback',
+        content: 'This is a callback response',
+        invocationId: 'inv-callback-1',
+      });
+    });
+
+    expect(mockAddMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'callback',
+        extra: { stream: { invocationId: 'inv-callback-1' } },
+      }),
+    );
+  });
+
   it('requests catch-up when stream data was seen but bubble is lost', () => {
     act(() => {
       root.render(React.createElement(Harness));

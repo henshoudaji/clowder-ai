@@ -40,6 +40,9 @@ import {
 } from './OutboundDeliveryHook.js';
 import { RedisConnectorThreadBindingStore } from './RedisConnectorThreadBindingStore.js';
 import { StreamingOutboundHook } from './StreamingOutboundHook.js';
+import type { IConnectorThreadBindingStore } from './ConnectorThreadBindingStore.js';
+import { WeixinSessionStore } from './WeixinSessionStore.js';
+import { resolveCatCafeHostRoot } from '../../utils/cat-cafe-root.js';
 
 export interface ConnectorGatewayConfig {
   telegramBotToken?: string | undefined;
@@ -66,6 +69,7 @@ export interface ConnectorGatewayConfig {
 }
 
 export interface ConnectorGatewayDeps {
+  readonly bindingStore?: IConnectorThreadBindingStore | undefined;
   readonly messageStore: {
     append(input: {
       threadId: string;
@@ -136,6 +140,7 @@ export interface ConnectorGatewayDeps {
   readonly socketManager?:
     | {
         broadcastToRoom(room: string, event: string, data: unknown): void;
+        emitToUser?(userId: string, event: string, data: unknown): void;
       }
     | undefined;
   readonly defaultUserId: string;
@@ -143,6 +148,7 @@ export interface ConnectorGatewayDeps {
   readonly redis?: RedisClient | undefined;
   readonly log: FastifyBaseLogger;
   readonly frontendBaseUrl?: string | undefined;
+  readonly hostRoot?: string | undefined;
   /** @internal Test-only: override WSClient factory to avoid real SDK connections */
   readonly _wsClientFactory?:
     | ((opts: { appId: string; appSecret: string }) => {
@@ -150,6 +156,8 @@ export interface ConnectorGatewayDeps {
         close(opts?: unknown): void;
       })
     | undefined;
+  /** @internal Test-only: override WeChat fetch to avoid real iLink network calls */
+  readonly _weixinFetch?: typeof fetch | undefined;
 }
 
 export interface ConnectorGatewayHandle {
@@ -159,6 +167,7 @@ export interface ConnectorGatewayHandle {
   readonly weixinAdapter: InstanceType<typeof WeixinAdapter> | null;
   readonly permissionStore: IConnectorPermissionStore;
   readonly startWeixinPolling: () => void;
+  readonly activateWeixinBotToken: (token: string) => Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -190,6 +199,10 @@ export async function startConnectorGateway(
   deps: ConnectorGatewayDeps,
 ): Promise<ConnectorGatewayHandle | null> {
   const { log } = deps;
+  const hostRoot = deps.hostRoot ?? resolveCatCafeHostRoot(process.cwd());
+  const weixinSessionStore = new WeixinSessionStore(hostRoot);
+  const persistedWeixinSession = !config.weixinBotToken ? weixinSessionStore.load() : null;
+  const effectiveWeixinBotToken = config.weixinBotToken || persistedWeixinSession?.botToken;
 
   const hasTelegram = Boolean(config.telegramBotToken);
   const feishuWsMode = config.feishuConnectionMode === 'websocket';
@@ -197,16 +210,15 @@ export async function startConnectorGateway(
     config.feishuAppId && config.feishuAppSecret && (feishuWsMode || config.feishuVerificationToken),
   );
   const hasDingTalk = Boolean(config.dingtalkAppKey && config.dingtalkAppSecret);
-  const hasWeixin = Boolean(config.weixinBotToken);
+  const hasWeixin = Boolean(effectiveWeixinBotToken);
   const hasXiaoyi = Boolean(config.xiaoyiAk && config.xiaoyiSk && config.xiaoyiAgentId);
 
   if (!hasTelegram && !hasFeishu && !hasDingTalk && !hasWeixin && !hasXiaoyi) {
     log.info('[ConnectorGateway] No pre-configured connectors — gateway created for WeChat QR login support');
   }
 
-  const bindingStore = deps.redis
-    ? new RedisConnectorThreadBindingStore(deps.redis)
-    : new MemoryConnectorThreadBindingStore();
+  const bindingStore =
+    deps.bindingStore ?? (deps.redis ? new RedisConnectorThreadBindingStore(deps.redis) : new MemoryConnectorThreadBindingStore());
   const dedup = new InboundMessageDedup();
   log.info({ store: deps.redis ? 'redis' : 'memory' }, '[ConnectorGateway] Binding store initialized');
   const adapters = new Map<string, IOutboundAdapter>();
@@ -244,6 +256,7 @@ export async function startConnectorGateway(
 
   const commandLayer = new ConnectorCommandLayer({
     bindingStore,
+    socketManager: deps.socketManager,
     threadStore: deps.threadStore,
     ...(deps.backlogStore ? { backlogStore: deps.backlogStore } : {}),
     frontendBaseUrl: deps.frontendBaseUrl ?? 'http://localhost:3003',
@@ -536,7 +549,10 @@ export async function startConnectorGateway(
 
   // ── WeChat Personal (iLink Bot long polling) ──
   // Always create the adapter instance (for QR login routes); only start polling if we have a token.
-  const weixin = new WeixinAdapter(config.weixinBotToken ?? '', log);
+  const weixin = new WeixinAdapter(effectiveWeixinBotToken ?? '', log);
+  if (deps._weixinFetch) {
+    weixin._injectFetch(deps._weixinFetch);
+  }
   adapters.set('weixin', weixin);
 
   const startWeixinPolling = () => {
@@ -544,15 +560,33 @@ export async function startConnectorGateway(
       await connectorRouter.route('weixin', msg.chatId, msg.text, msg.messageId);
     });
   };
+  const activateWeixinBotToken = async (token: string) => {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      throw new Error('WeChat bot token must not be empty');
+    }
+    weixin.setBotToken(trimmed);
+    weixinSessionStore.save(trimmed);
+    startWeixinPolling();
+  };
 
   if (hasWeixin) {
     startWeixinPolling();
-    log.info('[ConnectorGateway] WeChat adapter started (iLink Bot long polling)');
+    log.info(
+      { source: config.weixinBotToken ? 'env' : 'persisted_session' },
+      '[ConnectorGateway] WeChat adapter started (iLink Bot long polling)',
+    );
   } else {
     log.info('[ConnectorGateway] WeChat adapter registered (awaiting QR login)');
   }
 
   weixin.setOnSessionExpired(() => {
+    weixin.setBotToken('');
+    try {
+      weixinSessionStore.clear();
+    } catch (err) {
+      log.warn({ err }, '[ConnectorGateway] Failed to clear persisted WeChat session after expiry');
+    }
     log.warn('[ConnectorGateway] WeChat session expired — user must re-scan QR code');
   });
 
@@ -646,6 +680,7 @@ export async function startConnectorGateway(
     weixinAdapter: weixin,
     permissionStore,
     startWeixinPolling,
+    activateWeixinBotToken,
     async stop() {
       cleanupJob.stop();
       await Promise.allSettled(stopFns.map((fn) => fn()));

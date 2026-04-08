@@ -218,7 +218,7 @@ export class DingTalkAdapter implements IStreamableOutboundAdapter {
     catDisplayName: string,
   ): Promise<void> {
     // DingTalk markdown supports basic formatting
-    const title = `🐱 ${catDisplayName}`;
+    const title = catDisplayName;
     await this.sendMarkdown(externalChatId, title, textContent);
   }
 

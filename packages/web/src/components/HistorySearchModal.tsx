@@ -62,7 +62,7 @@ export function HistorySearchModal({ onSelect, onClose }: HistorySearchModalProp
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Search history..."
-          className="flex-1 text-sm outline-none bg-transparent placeholder:text-gray-300"
+          className="ui-input ui-input-plain flex-1 text-sm"
         />
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">
           Esc

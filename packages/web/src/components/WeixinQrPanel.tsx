@@ -9,7 +9,13 @@ type QrState = 'idle' | 'fetching' | 'waiting' | 'scanned' | 'confirmed' | 'erro
 const QR_POLL_INTERVAL_MS = 2500;
 const QR_EXPIRE_MS = 60_000;
 
-export function WeixinQrPanel({ configured }: { configured: boolean }) {
+export function WeixinQrPanel({
+  configured,
+  onConfigured,
+}: {
+  configured: boolean;
+  onConfigured?: () => void | Promise<void>;
+}) {
   const [qrState, setQrState] = useState<QrState>(configured ? 'confirmed' : 'idle');
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,6 +35,15 @@ export function WeixinQrPanel({ configured }: { configured: boolean }) {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  useEffect(() => {
+    if (configured) {
+      stopPolling();
+      setQrState('confirmed');
+      setQrUrl(null);
+      setErrorMsg(null);
+    }
+  }, [configured, stopPolling]);
+
   const startPolling = useCallback(
     (payload: string) => {
       stopPolling();
@@ -45,6 +60,8 @@ export function WeixinQrPanel({ configured }: { configured: boolean }) {
             stopPolling();
             setQrState('confirmed');
             setQrUrl(null);
+            setErrorMsg(null);
+            await onConfigured?.();
           } else if (data.status === 'expired') {
             stopPolling();
             setQrState('expired');
@@ -64,7 +81,7 @@ export function WeixinQrPanel({ configured }: { configured: boolean }) {
         setQrUrl(null);
       }, QR_EXPIRE_MS);
     },
-    [stopPolling],
+    [onConfigured, stopPolling],
   );
 
   const handleFetchQr = async () => {

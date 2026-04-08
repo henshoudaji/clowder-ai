@@ -72,17 +72,14 @@ export function TextField({
   required?: boolean;
   tone?: 'neutral' | 'success';
 }) {
-  const inputColors =
-    tone === 'success'
-      ? 'border-[#CFE5D5] bg-[#E8F5E9] focus:border-[#77A777] focus:ring-[#CFE5D5]'
-      : 'border-[#E8DCCF] bg-[#F7F3F0] focus:border-[#D49266] focus:ring-[#F5D2B8]';
+  const inputToneClass = tone === 'success' ? 'ui-input-success' : 'ui-input-soft';
   return (
     <FieldShell label={label} required={required} tone={tone}>
       <input
         aria-label={ariaLabel ?? label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`w-full rounded-[10px] border px-3.5 py-2 text-[14px] leading-5 text-[#2D2118] placeholder:text-[#C4B5A8] outline-none transition focus:ring-2 ${inputColors}`}
+        className={`ui-input ${inputToneClass} w-full rounded-[10px] px-3.5 py-2 text-[14px] leading-5 transition`}
         inputMode={inputMode}
         placeholder={placeholder}
         required={required}
@@ -106,17 +103,14 @@ export function TextAreaField({
   placeholder?: string;
   tone?: 'neutral' | 'success';
 }) {
-  const inputColors =
-    tone === 'success'
-      ? 'border-[#CFE5D5] bg-[#E8F5E9] focus:border-[#77A777] focus:ring-[#CFE5D5]'
-      : 'border-[#E8DCCF] bg-[#F7F3F0] focus:border-[#D49266] focus:ring-[#F5D2B8]';
+  const inputToneClass = tone === 'success' ? 'ui-textarea-success' : 'ui-textarea-soft';
   return (
     <FieldShell label={label} tone={tone}>
       <textarea
         aria-label={ariaLabel ?? label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`min-h-[92px] w-full rounded-[10px] border px-3.5 py-2 text-[14px] leading-5 text-[#2D2118] outline-none transition focus:ring-2 ${inputColors}`}
+        className={`ui-textarea ${inputToneClass} min-h-[92px] w-full rounded-[10px] px-3.5 py-2 text-[14px] leading-5 transition`}
         placeholder={placeholder}
       />
     </FieldShell>

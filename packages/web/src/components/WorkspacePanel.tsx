@@ -620,7 +620,7 @@ export function WorkspacePanel() {
                   ? '搜索文件名/路径...'
                   : '搜索全部...'
             }
-            className="flex-1 text-xs bg-transparent text-cafe-black placeholder:text-cocreator-dark/30 focus:outline-none"
+            className="ui-input ui-input-plain flex-1 text-xs"
           />
           <button
             type="button"

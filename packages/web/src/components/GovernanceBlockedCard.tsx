@@ -83,7 +83,7 @@ export function GovernanceBlockedCard({ projectPath, reasonKind, invocationId, o
               {REASON_LABELS[reasonKind] ?? '治理状态异常'}
             </p>
             <p className="text-xs text-amber-600 mt-1">
-              初始化将写入治理规则（CLAUDE.md 等）、Skills 链接和方法论模板到目标项目。已有文件不会被覆盖。
+              初始化将写入治理规则（AGENTS.md 等）、Skills 链接和方法论模板到目标项目。已有文件不会被覆盖。
             </p>
 
             <div className="mt-3">

@@ -228,6 +228,16 @@ function patchMessageInList(messages: ChatMessage[], id: string, patch: ChatMess
   return changed ? nextMessages : messages;
 }
 
+function getLatestMessageTimestamp(messages: ChatMessage[]): number {
+  let maxTs = 0;
+  for (const msg of messages) {
+    if (typeof msg.timestamp === 'number' && Number.isFinite(msg.timestamp)) {
+      if (msg.timestamp > maxTs) maxTs = msg.timestamp;
+    }
+  }
+  return maxTs;
+}
+
 /** F067 Phase 2: Fire macOS notification when a cat @mentions the co-creator */
 function fireOwnerMentionNotification(msg: ChatMessage) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
@@ -342,6 +352,8 @@ interface ChatState {
   _unreadSuppressedUntil: Record<string, number>;
   /** #586: Count of in-flight ack requests per thread — suppression clears only when 0 */
   _pendingAckCount: Record<string, number>;
+  /** Internal read watermark per thread (latest viewed message timestamp). */
+  _lastReadAtByThread: Record<string, number>;
   threads: Thread[];
   isLoadingThreads: boolean;
   pendingNewThreadSend: PendingNewThreadSend | null;
@@ -555,6 +567,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentProjectPath: 'default',
   _unreadSuppressedUntil: {},
   _pendingAckCount: {},
+  _lastReadAtByThread: {},
   threads: [],
   isLoadingThreads: false,
   pendingNewThreadSend: null,
@@ -1076,12 +1089,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const saved = snapshotActive(state);
       // Load target thread state (or defaults for first visit)
       const loaded = state.threadStates[threadId] ?? { ...DEFAULT_THREAD_STATE };
+      const savedThreadLatestReadAt = getLatestMessageTimestamp(saved.messages);
+      const prevReadAt = state._lastReadAtByThread[state.currentThreadId] ?? 0;
 
       return {
         currentThreadId: threadId,
         threadStates: {
           ...state.threadStates,
           [state.currentThreadId]: saved,
+        },
+        _lastReadAtByThread: {
+          ...state._lastReadAtByThread,
+          [state.currentThreadId]: Math.max(prevReadAt, savedThreadLatestReadAt),
         },
         ...flattenThread(loaded),
       };
@@ -1111,9 +1130,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Background thread — update map + increment unread
       const existing = state.threadStates[threadId] ?? { ...DEFAULT_THREAD_STATE };
       if (existing.messages.some((m) => m.id === msg.id)) return state;
+      const lastReadAt = state._lastReadAtByThread[threadId] ?? 0;
+      const isReplayOrAlreadyViewed =
+        typeof msg.timestamp === 'number' && Number.isFinite(msg.timestamp) && msg.timestamp <= lastReadAt;
 
       // F067 Phase 2: Fire macOS notification for @co-creator mention
-      if (msg.mentionsUser) fireOwnerMentionNotification(msg);
+      if (msg.mentionsUser && !isReplayOrAlreadyViewed) fireOwnerMentionNotification(msg);
 
       return {
         threadStates: {
@@ -1121,8 +1143,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           [threadId]: {
             ...existing,
             messages: [...existing.messages, msg],
-            unreadCount: existing.unreadCount + 1,
-            hasUserMention: existing.hasUserMention || !!msg.mentionsUser,
+            unreadCount: existing.unreadCount + (isReplayOrAlreadyViewed ? 0 : 1),
+            hasUserMention: existing.hasUserMention || (!!msg.mentionsUser && !isReplayOrAlreadyViewed),
             lastActivity: Date.now(),
           },
         },
@@ -1516,6 +1538,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       const ts = state.threadStates[threadId];
       if (!ts || (ts.unreadCount === 0 && !ts.hasUserMention)) return state;
+      const latestReadAt = getLatestMessageTimestamp(ts.messages);
+      const prevReadAt = state._lastReadAtByThread[threadId] ?? 0;
       // #586 Bug 3: Use Infinity instead of 10s timeout. Suppression persists
       // until confirmUnreadAck() is called after POST /read/latest succeeds,
       // preventing stale server unread counts from overwriting cleared state.
@@ -1523,6 +1547,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         threadStates: {
           ...state.threadStates,
           [threadId]: { ...ts, unreadCount: 0, hasUserMention: false },
+        },
+        _lastReadAtByThread: {
+          ...state._lastReadAtByThread,
+          [threadId]: Math.max(prevReadAt, latestReadAt),
         },
         _unreadSuppressedUntil: {
           ...state._unreadSuppressedUntil,
@@ -1540,17 +1568,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // the user never opens (no ChatContainer ack effect to release them).
       const suppressUntil = Date.now() + 30_000;
       const suppressed: Record<string, number> = { ...state._unreadSuppressedUntil };
+      const nextReadAtByThread: Record<string, number> = { ...state._lastReadAtByThread };
       let changed = false;
       for (const [tid, ts] of Object.entries(state.threadStates)) {
         if (ts.unreadCount > 0 || ts.hasUserMention) {
           updated[tid] = { ...ts, unreadCount: 0, hasUserMention: false };
           suppressed[tid] = suppressUntil;
+          nextReadAtByThread[tid] = Math.max(nextReadAtByThread[tid] ?? 0, getLatestMessageTimestamp(ts.messages));
           changed = true;
         } else {
           updated[tid] = ts;
         }
       }
-      return changed ? { threadStates: updated, _unreadSuppressedUntil: suppressed } : state;
+      return changed ? { threadStates: updated, _unreadSuppressedUntil: suppressed, _lastReadAtByThread: nextReadAtByThread } : state;
     }),
 
   confirmUnreadAck: (threadId) =>

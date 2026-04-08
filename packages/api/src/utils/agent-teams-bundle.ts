@@ -7,7 +7,7 @@ import type { RuntimeProviderProfile } from '../config/provider-profiles.js';
 import { resolveHuaweiMaaSRuntimeConfig } from '../integrations/huawei-maas.js';
 
 const BUNDLED_AGENT_TEAMS_PATH_SEGMENTS = ['tools', 'python', 'python.exe'] as const;
-export const DEFAULT_EMBEDDED_AGENT_TEAMS_ARGS = ['-m', 'agent_teams', 'gateway', 'acp', 'stdio'] as const;
+export const DEFAULT_EMBEDDED_AGENT_TEAMS_ARGS = ['-m', 'relay_teams', 'gateway', 'acp', 'stdio'] as const;
 
 export function resolveBundledAgentTeamsExecutable(projectRoot: string): string {
   return resolve(projectRoot, ...BUNDLED_AGENT_TEAMS_PATH_SEGMENTS);

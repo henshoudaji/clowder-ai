@@ -25,7 +25,6 @@ const apiBaseUrl = resolveApiBaseUrl();
 const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  output: 'standalone',
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   // 允许 Tailscale 网段设备访问 dev server 的 /_next/* 资源

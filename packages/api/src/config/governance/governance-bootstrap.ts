@@ -15,6 +15,8 @@ import {
   computePackChecksum,
   GOVERNANCE_PACK_VERSION,
   getGovernanceManagedBlock,
+  LEGACY_BLOCK_END,
+  LEGACY_BLOCK_START,
   MANAGED_BLOCK_END,
   MANAGED_BLOCK_START,
 } from './governance-pack.js';
@@ -127,14 +129,22 @@ export class GovernanceBootstrapService {
       // File doesn't exist — will create
     }
 
-    // Check if managed block already exists
-    const startIdx = existingContent.indexOf(MANAGED_BLOCK_START);
-    const endIdx = existingContent.indexOf(MANAGED_BLOCK_END);
+    // Check if managed block already exists (new markers first, then legacy)
+    let startIdx = existingContent.indexOf(MANAGED_BLOCK_START);
+    let endIdx = existingContent.indexOf(MANAGED_BLOCK_END);
+    let endMarkerLen = MANAGED_BLOCK_END.length;
+
+    // Fallback: check for legacy markers (pre-1.3.0 migration)
+    if (startIdx < 0 || endIdx < 0) {
+      startIdx = existingContent.indexOf(LEGACY_BLOCK_START);
+      endIdx = existingContent.indexOf(LEGACY_BLOCK_END);
+      endMarkerLen = LEGACY_BLOCK_END.length;
+    }
 
     if (startIdx >= 0 && endIdx >= 0) {
-      // Replace existing managed block
+      // Replace existing managed block (upgrades legacy markers to new ones)
       const before = existingContent.slice(0, startIdx);
-      const after = existingContent.slice(endIdx + MANAGED_BLOCK_END.length);
+      const after = existingContent.slice(endIdx + endMarkerLen);
       const newContent = before + block + after;
 
       if (newContent === existingContent) {

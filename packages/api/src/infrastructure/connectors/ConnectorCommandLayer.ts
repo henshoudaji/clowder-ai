@@ -29,6 +29,11 @@ interface ThreadEntry {
 
 export interface ConnectorCommandLayerDeps {
   readonly bindingStore: IConnectorThreadBindingStore;
+  readonly socketManager?:
+    | {
+        emitToUser?(userId: string, event: string, data: unknown): void;
+      }
+    | undefined;
   readonly threadStore: {
     create(userId: string, title?: string): { id: string } | Promise<{ id: string }>;
     get(
@@ -115,6 +120,10 @@ export class ConnectorCommandLayer {
     const effectiveTitle = title?.trim() ? title.trim() : undefined;
     const thread = await this.deps.threadStore.create(userId, effectiveTitle);
     await this.deps.bindingStore.bind(connectorId, externalChatId, thread.id, userId);
+    this.deps.socketManager?.emitToUser?.(userId, 'thread_created', {
+      threadId: thread.id,
+      source: 'connector_command',
+    });
     const deepLink = `${this.deps.frontendBaseUrl}/threads/${thread.id}`;
     const titleDisplay = effectiveTitle ? ` "${effectiveTitle}"` : '';
     return {

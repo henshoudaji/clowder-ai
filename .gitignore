@@ -76,6 +76,7 @@ coverage/
 packages/api/uploads/*
 !packages/api/uploads/.gitkeep
 /uploads/
+workspace/
 
 # Runtime data (audit logs, etc.)
 data/

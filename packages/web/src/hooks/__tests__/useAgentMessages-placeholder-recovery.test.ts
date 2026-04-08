@@ -145,6 +145,34 @@ describe('useAgentMessages placeholder recovery', () => {
     expect(mockSetMessageThinking).toHaveBeenCalledWith('msg-live-1', 'still thinking');
   });
 
+  it('tolerates pseudo-object thinking payloads and embeds them into the existing bubble', () => {
+    storeState.messages = [
+      {
+        id: 'msg-live-1b',
+        type: 'assistant',
+        catId: 'office',
+        content: 'partial reply',
+        isStreaming: true,
+        timestamp: Date.now(),
+      },
+    ];
+
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'system_info',
+        catId: 'office',
+        content: 'type: thinking, catId: office, text: 流程',
+      });
+    });
+
+    expect(mockAddMessage).not.toHaveBeenCalled();
+    expect(mockSetMessageThinking).toHaveBeenCalledWith('msg-live-1b', '流程');
+  });
+
   it('reuses an existing streaming bubble when rich_block arrives after active refs were lost', () => {
     storeState.messages = [
       {

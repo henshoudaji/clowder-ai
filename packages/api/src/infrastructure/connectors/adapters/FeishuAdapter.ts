@@ -682,7 +682,7 @@ export class FeishuAdapter implements IStreamableOutboundAdapter {
 
     const card = {
       config: { update_multi: true },
-      header: { title: { tag: 'plain_text' as const, content: '🐱 回复中...' }, template: 'blue' as const },
+      header: { title: { tag: 'plain_text' as const, content: '回复中...' }, template: 'blue' as const },
       elements: [{ tag: 'markdown', content: text }],
     };
     await this.client.im.message.patch({

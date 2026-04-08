@@ -120,6 +120,7 @@ _FORWARD_REQ_METHODS = frozenset({
     "skills.skillnet.search",
     "skills.skillnet.install",
     "skills.skillnet.install_status",
+    "tools.add",
 })
 
 _FORWARD_NO_LOCAL_HANDLER_METHODS = frozenset({
@@ -136,6 +137,7 @@ _FORWARD_NO_LOCAL_HANDLER_METHODS = frozenset({
     "skills.skillnet.search",
     "skills.skillnet.install",
     "skills.skillnet.install_status",
+    "tools.add",
 })
 
 # 配置信息：config.get 返回、config.set 可修改的键（前端 param 名 -> 环境变量名）
@@ -1344,7 +1346,9 @@ async def _run() -> None:
             _do_restart()
 
     # ---------- 一次启动所有服务 ----------
+    logger.info("[AgentServer] 启动流程开始 AGENT_PORT=%s", agent_port)
     agent = JiuWenClaw()
+    logger.info("[AgentServer] JiuWenClaw 实例已创建，准备注册 AgentWebSocketServer")
 
     server = AgentWebSocketServer.get_instance(
         agent=agent,
@@ -1354,10 +1358,12 @@ async def _run() -> None:
         ping_timeout=20.0,
     )
     await server.start()
+    logger.info("[AgentServer] AgentWebSocketServer 已监听，等待 Gateway连接")
     await asyncio.sleep(0.3)
     uri = f"ws://127.0.0.1:{agent_port}"
 
     client = WebSocketAgentServerClient(ping_interval=20.0, ping_timeout=20.0)
+    logger.info("[AgentServer] Gateway 客户端正在连接 AgentServer: %s", uri)
     await client.connect(uri)
     message_handler = MessageHandler(client)
     await message_handler.start_forwarding()
@@ -1367,7 +1373,9 @@ async def _run() -> None:
     cron_controller = CronController.get_instance(store=cron_store, scheduler=cron_scheduler)
 
     # agent实例化需要在定时任务后
+    logger.info("[AgentServer] 即将执行 agent.create_instance()")
     await agent.create_instance()
+    logger.info("[AgentServer] agent.create_instance() 已返回")
 
     # 探活：周期性向 AgentServer 发送心跳，便于检测连接与 Agent 可用性
     # 优先从 config/config.yaml 的 heartbeat 段读取配置，其次回退到环境变量/默认值
@@ -1873,13 +1881,24 @@ async def _run() -> None:
         await channel_manager.stop_dispatch()
         await heartbeat_service.stop()
         await message_handler.stop_forwarding()
+        logger.info("[AgentServer] 正在断开 Gateway WebSocketAgentServerClient …")
         await client.disconnect()
+        logger.info("[AgentServer] 正在停止 AgentWebSocketServer …")
         await server.stop()
         logger.info("[App] E2E 已停止")
 
 
 def main() -> None:
-    asyncio.run(_run())
+    logger.info("[App] process bootstrap pid=%s cwd=%s", os.getpid(), os.getcwd())
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        logger.info("[App] KeyboardInterrupt pid=%s", os.getpid())
+        raise
+    except Exception:
+        logger.critical("[App] asyncio.run(_run) failed pid=%s", os.getpid(), exc_info=True)
+        raise
+
 
 
 if __name__ == "__main__":

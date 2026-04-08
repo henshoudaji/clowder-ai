@@ -131,6 +131,43 @@ describe('GET /api/connector/weixin/qrcode-status — adapter not ready', () => 
     WA._injectStaticFetch(originalFetch);
     await app.close();
   });
+
+  it('persists and activates token through activateWeixinBotToken when available', async () => {
+    const { WeixinAdapter: WA } = await import('../dist/infrastructure/connectors/adapters/WeixinAdapter.js');
+    const originalFetch = globalThis.fetch;
+    WA._injectStaticFetch(async () => ({
+      ok: true,
+      json: async () => ({ errcode: 0, status: 2, bot_token: 'tok_secret_789' }),
+    }));
+
+    const activated = [];
+    const app = Fastify();
+    await app.register(connectorHubRoutes, {
+      threadStore: {
+        async list() {
+          return [];
+        },
+      },
+      activateWeixinBotToken: async (token) => {
+        activated.push(token);
+      },
+    });
+    await app.ready();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/connector/weixin/qrcode-status?qrPayload=test-payload',
+      headers: AUTH_HEADERS,
+    });
+
+    const body = JSON.parse(res.body);
+    assert.equal(res.statusCode, 200);
+    assert.equal(body.status, 'confirmed');
+    assert.deepEqual(activated, ['tok_secret_789']);
+
+    WA._injectStaticFetch(originalFetch);
+    await app.close();
+  });
 });
 
 describe('GET /api/connector/hub-threads', () => {

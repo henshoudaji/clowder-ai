@@ -106,7 +106,7 @@ export function ChatInputActionButton({
   const showIdleMic = !hideIdleMic && voice.state === 'idle';
 
   return (
-    <div className="relative flex shrink-0 items-center justify-end">
+    <div className="relative flex shrink-0 items-center justify-end ml-2">
       {/* Voice recording status */}
       {voice.state === 'recording' && (
         <div className="absolute top-0 right-4 -mt-6 flex items-center gap-2">
@@ -130,7 +130,7 @@ export function ChatInputActionButton({
         <button
           onClick={voice.startRecording}
           disabled={disabled}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-gray-400 hover:text-cocreator-primary hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl text-gray-400 hover:text-cocreator-primary hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           aria-label="Start voice input (⌥V)"
           title="语音输入 (⌥V)"
         >
@@ -188,7 +188,7 @@ export function ChatInputActionButton({
           <button
             onClick={onQueueSend}
             disabled={isSendDisabled}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#9B7EBD] text-white hover:bg-[#8A6DAC] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#9B7EBD] text-white hover:bg-[#8A6DAC] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             aria-label="排队发送"
             title="排队发送 — 猫猫忙完后处理"
           >
@@ -198,7 +198,7 @@ export function ChatInputActionButton({
             <button
               onClick={onForceSend}
               disabled={isSendDisabled}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
+              className="inline-flex hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
               aria-label="强制发送"
               title="强制发送 — 中断当前猫猫"
             >

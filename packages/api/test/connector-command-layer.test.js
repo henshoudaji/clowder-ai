@@ -106,6 +106,7 @@ describe('ConnectorCommandLayer', () => {
 
   it('/new creates a new thread and returns confirmation', async () => {
     const bindings = new Map();
+    const socketEvents = [];
     const store = {
       ...stubStore(),
       bind: async (cId, eCId, tId, uId) => {
@@ -117,6 +118,11 @@ describe('ConnectorCommandLayer', () => {
     };
     const layer = new ConnectorCommandLayer({
       bindingStore: store,
+      socketManager: {
+        emitToUser(userId, event, data) {
+          socketEvents.push({ userId, event, data });
+        },
+      },
       threadStore: stubThreadStore(),
       frontendBaseUrl: 'https://cafe.example.com',
     });
@@ -125,6 +131,13 @@ describe('ConnectorCommandLayer', () => {
     assert.ok(result.newActiveThreadId);
     assert.ok(result.response.includes('新话题'));
     assert.ok(result.response.includes('cafe.example.com'));
+    assert.deepEqual(socketEvents, [
+      {
+        userId: 'user1',
+        event: 'thread_created',
+        data: { threadId: result.newActiveThreadId, source: 'connector_command' },
+      },
+    ]);
   });
 
   it('/new without title still creates thread', async () => {

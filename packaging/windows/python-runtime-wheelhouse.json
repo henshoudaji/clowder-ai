@@ -37,7 +37,7 @@
         "pypdf",
         "reportlab",
         "markitdown",
-        "cool-play-agent-teams"
+        "relay-teams"
       ],
       "localProjects": [
         {

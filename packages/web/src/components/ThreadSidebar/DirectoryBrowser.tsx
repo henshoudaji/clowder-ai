@@ -1,4 +1,4 @@
-/**
+﻿/**
  * F113 Phase D: Cross-platform directory browser.
  * Replaces macOS-only osascript folder picker with a web-based solution.
  * Calls GET /api/projects/browse to list directories.
@@ -208,7 +208,7 @@ export function DirectoryBrowser({ initialPath, activeProjectPath, onSelect, onC
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) handlePathSubmit();
             }}
             placeholder="Enter path..."
-            className="flex-1 rounded-[6px] border border-[rgb(194,194,194)] bg-white px-3 py-2 text-sm text-[#2E3440] placeholder:text-[#A8B0BD] focus:outline-none focus:ring-1 focus:ring-[#DCE2EB]"
+            className="ui-input flex-1 rounded-[6px] px-3 py-2 text-sm"
           />
           {pathInput.trim() && (
             <button
@@ -234,7 +234,7 @@ export function DirectoryBrowser({ initialPath, activeProjectPath, onSelect, onC
               {browseResult.current}
             </span>
           )}
-          <button type="button" onClick={onCancel} className="ui-button-secondary">
+          <button type="button" onClick={onCancel} className="ui-button-default">
             取消
           </button>
           <button

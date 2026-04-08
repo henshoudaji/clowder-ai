@@ -35,7 +35,7 @@ const ALL_CLIENTS_RESPONSE = {
     { id: 'dare', label: 'Dare', command: 'dare', available: true },
     { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
     { id: 'relayclaw', label: 'jiuwen', command: 'jiuwenclaw-app', available: true },
-    { id: 'acp', label: 'ACP', command: 'tools/python/python.exe -m agent_teams gateway acp stdio', available: true },
+    { id: 'acp', label: 'ACP', command: 'tools/python/python.exe -m relay_teams gateway acp stdio', available: true },
     { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
   ],
 };
@@ -266,8 +266,8 @@ describe('HubCatEditor', () => {
         updatedAt: '2026-03-18T00:00:00.000Z',
       },
       {
-        id: 'agent-teams-local',
-        provider: 'agent-teams-local',
+        id: 'relay-teams-local',
+        provider: 'relay-teams-local',
         displayName: 'Agent Teams Local',
         name: 'Agent Teams Local',
         authType: 'none',
@@ -283,7 +283,7 @@ describe('HubCatEditor', () => {
       },
     ];
 
-    expect(filterProfiles('acp', profiles).map((profile) => profile.id)).toEqual(['agent-teams-local']);
+    expect(filterProfiles('acp', profiles).map((profile) => profile.id)).toEqual(['relay-teams-local']);
   });
 
   it('treats embedded Agent Teams members as API-key bound and ignores legacy ACP config bindings', async () => {
@@ -319,7 +319,7 @@ describe('HubCatEditor', () => {
                 builtin: false,
                 mode: 'none',
                 protocol: 'acp',
-                command: 'agent-teams',
+                command: 'relay-teams',
                 args: ['gateway', 'acp', 'stdio'],
                 hasApiKey: false,
                 createdAt: '2026-03-18T00:00:00.000Z',
@@ -453,7 +453,7 @@ describe('HubCatEditor', () => {
 
     await changeField(queryField(container, 'select[aria-label="认证信息"]'), 'codex-sponsor', 'change');
     await flushEffects();
-    await changeField(queryField(container, 'input[aria-label="EXE Path"]'), 'vendor/agent-teams/agent-teams.exe');
+    await changeField(queryField(container, 'input[aria-label="EXE Path"]'), 'vendor/relay-teams/relay-teams.exe');
     await changeField(queryField(container, 'input[aria-label="ACP Args"]'), '--trace gateway acp stdio');
     await changeField(queryField(container, 'textarea[aria-label="ACP Env"]'), 'FOO=bar\nBAR=baz');
 
@@ -473,9 +473,9 @@ describe('HubCatEditor', () => {
     expect(payload.accountRef).toBe('codex-sponsor');
     expect(payload.defaultModel).toBe('mimo-v2-flash');
     expect(payload.client).toBe('relayclaw');
-    expect(payload.embeddedAcpExecutablePath).toBe('vendor/agent-teams/agent-teams.exe');
+    expect(payload.embeddedAcpExecutablePath).toBe('vendor/relay-teams/relay-teams.exe');
     expect(payload.embeddedAcpConfig).toEqual({
-      executablePath: 'vendor/agent-teams/agent-teams.exe',
+      executablePath: 'vendor/relay-teams/relay-teams.exe',
       args: ['--trace', 'gateway', 'acp', 'stdio'],
       env: { FOO: 'bar', BAR: 'baz' },
     });
@@ -627,7 +627,7 @@ describe('HubCatEditor', () => {
               { id: 'dare', label: 'Dare', command: 'dare', available: false },
               { id: 'opencode', label: 'OpenCode', command: 'opencode', available: false },
               { id: 'relayclaw', label: 'jiuwenClaw', command: 'jiuwenclaw-app', available: true },
-              { id: 'acp', label: 'ACP', command: 'tools/python/python.exe -m agent_teams gateway acp stdio', available: false },
+              { id: 'acp', label: 'ACP', command: 'tools/python/python.exe -m relay_teams gateway acp stdio', available: false },
               { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: false },
             ],
           }),
@@ -933,8 +933,8 @@ describe('HubCatEditor', () => {
             activeProfileId: null,
             providers: [
               {
-                id: 'agent-teams-local',
-                provider: 'agent-teams-local',
+                id: 'relay-teams-local',
+                provider: 'relay-teams-local',
                 displayName: 'Agent Teams Local',
                 name: 'Agent Teams Local',
                 authType: 'none',
@@ -942,7 +942,7 @@ describe('HubCatEditor', () => {
                 builtin: false,
                 mode: 'none',
                 protocol: 'acp',
-                command: 'agent-teams',
+                command: 'relay-teams',
                 args: ['gateway', 'acp', 'stdio'],
                 cwd: '/tmp/project',
                 hasApiKey: false,

@@ -150,14 +150,20 @@ async function tencentApiGet<T>(path: string, cacheKey?: string): Promise<T> {
 
 export async function searchSkills(
   query: string,
-  options?: { tags?: string; sort?: string; page?: number; limit?: number },
+  options?: { tags?: string; sort?: string; page?: number; limit?: number; category?: string },
 ): Promise<SkillHubSearchResponse> {
   const page = options?.page ?? 1;
   const limit = options?.limit ?? 20;
+  const category = options?.category;
+
+  let apiPath = `/api/skills?page=${page}&pageSize=${limit}&keyword=${encodeURIComponent(query)}`;
+  if (category) {
+    apiPath += `&category=${encodeURIComponent(category)}`;
+  }
 
   const result = await tencentApiGet<{ skills: TencentSkill[]; total: number }>(
-    `/api/skills?page=${page}&pageSize=${limit}&keyword=${encodeURIComponent(query)}`,
-    `tencent:search:${query}:${page}:${limit}`,
+    apiPath,
+    `tencent:search:${query}:${page}:${limit}:${category ?? 'all'}`,
   );
 
   return {
@@ -177,6 +183,50 @@ export async function trendingSkills(): Promise<SkillHubSearchResponse> {
     page: 1,
     hasMore: false,
   };
+}
+
+export async function listAllSkills(options?: {
+  page?: number;
+  limit?: number;
+  category?: string;
+}): Promise<SkillHubSearchResponse> {
+  const page = options?.page ?? 1;
+  const limit = options?.limit ?? 24;
+  const category = options?.category;
+
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(limit),
+    sortBy: 'score',
+    order: 'desc',
+  });
+  if (category) {
+    params.set('category', category);
+  }
+
+  const result = await tencentApiGet<{ skills: TencentSkill[]; total: number }>(
+    `/api/skills?${params.toString()}`,
+    `tencent:all:${page}:${limit}:${category ?? 'all'}`,
+  );
+
+  return {
+    data: (result.skills ?? []).map(normalizeSkill),
+    total: result.total ?? 0,
+    page,
+    hasMore: page * limit < (result.total ?? 0),
+  };
+}
+
+export async function getSkillCategories(): Promise<string[]> {
+  return [
+    'ai-intelligence',
+    'developer-tools',
+    'productivity',
+    'content-creation',
+    'data-analysis',
+    'security-compliance',
+    'communication-collaboration',
+  ];
 }
 
 export async function resolveSkills(task: string, limit = 3): Promise<SkillHubResolveResponse> {

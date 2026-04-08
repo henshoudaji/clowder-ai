@@ -10,15 +10,7 @@
   min-height: 194px;
   flex-direction: column;
   gap: var(--space-7);
-  border: var(--border-width-default) solid var(--border-default);
-  border-radius: var(--radius-xl);
-  background: var(--surface-card);
   padding: var(--space-9);
-  box-shadow: var(--shadow-card-soft);
-  transition:
-    border-color 200ms ease,
-    box-shadow 200ms ease,
-    background-color 200ms ease;
 }
 
 .header {
@@ -74,37 +66,11 @@
 }
 
 .installButtonSuccess {
-  color: var(--state-success-text);
+  color: var(--text-disabled);
 }
 
 .installButtonMuted {
   color: var(--text-muted);
-}
-
-.artwork {
-  position: relative;
-  height: var(--control-height-touch);
-  width: var(--control-height-touch);
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: var(--border-width-default) solid color-mix(in srgb, var(--border-soft) 75%, transparent);
-  border-radius: var(--radius-md);
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--accent-soft) 52%, white) 0%,
-    color-mix(in srgb, var(--accent-soft) 76%, white) 100%
-  );
-}
-
-.artworkInitial {
-  font-size: 18px;
-  line-height: 1;
-  font-weight: var(--font-weight-bold);
-  color: color-mix(in srgb, var(--text-accent) 78%, var(--text-primary));
-  letter-spacing: 0.02em;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 @media (min-width: 1024px) {

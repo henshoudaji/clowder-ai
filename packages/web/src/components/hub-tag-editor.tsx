@@ -131,7 +131,7 @@ export function TagEditor({
               }
             }}
             placeholder={placeholder}
-            className="min-w-[220px] flex-1 rounded-xl border border-[#E8DCCF] bg-[#F7F3F0] px-3 py-2 text-sm text-[#2D2118] outline-none transition focus:border-[#D49266] focus:ring-2 focus:ring-[#F5D2B8]"
+            className="ui-input ui-input-soft min-w-[220px] flex-1 rounded-xl px-3 py-2 text-sm transition"
           />
           <button
             type="button"

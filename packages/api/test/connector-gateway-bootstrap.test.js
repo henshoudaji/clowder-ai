@@ -1,5 +1,8 @@
 import './helpers/setup-cat-registry.js';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { startConnectorGateway } from '../dist/infrastructure/connectors/connector-gateway-bootstrap.js';
 
@@ -226,6 +229,50 @@ describe('ConnectorGateway Bootstrap', () => {
       } else {
         process.env.DEFAULT_OWNER_USER_ID = originalEnv;
       }
+    }
+  });
+
+  it('restores persisted WeChat bot token across gateway restarts', async () => {
+    const hostRoot = mkdtempSync(join(tmpdir(), 'cat-cafe-weixin-'));
+    const delayedFetch = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        ok: true,
+        json: async () => ({ ret: 0, msgs: [], get_updates_buf: 'cursor-1' }),
+      };
+    };
+
+    try {
+      const first = await startConnectorGateway(
+        {},
+        {
+          ...baseDeps,
+          hostRoot,
+          _weixinFetch: delayedFetch,
+        },
+      );
+      assert.ok(first);
+      assert.equal(first.weixinAdapter.hasBotToken(), false);
+
+      await first.activateWeixinBotToken('persisted-token-1');
+      assert.equal(first.weixinAdapter.hasBotToken(), true);
+      assert.equal(first.weixinAdapter.isPolling(), true);
+      await first.stop();
+
+      const second = await startConnectorGateway(
+        {},
+        {
+          ...baseDeps,
+          hostRoot,
+          _weixinFetch: delayedFetch,
+        },
+      );
+      assert.ok(second);
+      assert.equal(second.weixinAdapter.hasBotToken(), true, 'Persisted token should be restored on restart');
+      assert.equal(second.weixinAdapter.isPolling(), true, 'Polling should auto-start after restoring token');
+      await second.stop();
+    } finally {
+      rmSync(hostRoot, { recursive: true, force: true });
     }
   });
 

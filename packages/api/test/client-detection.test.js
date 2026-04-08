@@ -4,6 +4,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+async function removeDirWithRetries(target, attempts = 5) {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      rmSync(target, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (index === attempts - 1) {
+        if (error && (error.code === 'ENOTEMPTY' || error.code === 'EPERM')) return;
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * (index + 1)));
+    }
+  }
+}
+
 test('detectAvailableClients marks dare available when vendored runtime exists', async () => {
   const dareRoot = mkdtempSync(join(tmpdir(), 'dare-client-detect-'));
   const oldDarePath = process.env.DARE_PATH;
@@ -30,11 +45,11 @@ test('detectAvailableClients marks dare available when vendored runtime exists',
 
     const { refreshAvailableClients } = await import('../dist/utils/client-detection.js');
     await refreshAvailableClients();
-    rmSync(dareRoot, { recursive: true, force: true });
+    await removeDirWithRetries(dareRoot);
   }
 });
 
-test('detectAvailableClients marks ACP available only when bundled agent-teams runtime exists', async () => {
+test('detectAvailableClients marks ACP available only when bundled relay-teams runtime exists', async () => {
   const projectRoot = mkdtempSync(join(tmpdir(), 'acp-client-detect-'));
   const previousCwd = process.cwd();
   const oldAllowedClients = process.env.CAT_CAFE_ALLOWED_CLIENTS;
@@ -53,7 +68,7 @@ test('detectAvailableClients marks ACP available only when bundled agent-teams r
     assert.equal(clients.length, 1);
     assert.equal(clients[0].id, 'acp');
     assert.equal(clients[0].available, true);
-    assert.match(clients[0].command, /python\.exe -m agent_teams gateway acp stdio$/);
+    assert.match(clients[0].command, /python\.exe -m relay_teams gateway acp stdio$/);
   } finally {
     process.chdir(previousCwd);
     if (oldAllowedClients === undefined) delete process.env.CAT_CAFE_ALLOWED_CLIENTS;
@@ -61,6 +76,6 @@ test('detectAvailableClients marks ACP available only when bundled agent-teams r
 
     const { refreshAvailableClients } = await import('../dist/utils/client-detection.js');
     await refreshAvailableClients();
-    rmSync(projectRoot, { recursive: true, force: true });
+    await removeDirWithRetries(projectRoot);
   }
 });

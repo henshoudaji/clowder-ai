@@ -39,7 +39,7 @@ export function ActionDock({ onVote, onSpeak, disabled = false }: ActionDockProp
         }}
         placeholder="输入发言内容..."
         disabled={disabled}
-        className="flex-1 bg-ww-surface text-ww-main rounded-lg px-3.5 h-[38px] text-sm placeholder:text-ww-dim outline-none disabled:opacity-50"
+        className="ui-input ui-input-game flex-1 rounded-lg px-3.5 h-[38px] text-sm disabled:opacity-50"
       />
       <button
         type="button"

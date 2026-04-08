@@ -326,7 +326,7 @@ function EnvVarsSection({
                         value={drafts[v.name] ?? ''}
                         onChange={(e) => onDraftChange(v.name, e.target.value)}
                         placeholder={isMaskedUrlVariable(v) ? '保持当前值（已脱敏）' : v.defaultValue}
-                        className="rounded-[10px] border border-[#E8DCCF] bg-[#F7F3F0] px-3 py-2 font-mono text-xs text-[#6A5A50]"
+                        className="ui-input ui-input-soft rounded-[10px] px-3 py-2 font-mono text-xs"
                       />
                       {buildVariableHint(v) ? (
                         <div className="text-[11px] leading-5 text-[#B59A88]">{buildVariableHint(v)}</div>

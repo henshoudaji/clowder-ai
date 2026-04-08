@@ -97,11 +97,11 @@
       "variants": [
         {
           "id": "assistant-default",
-          "provider": "dare",
+          "provider": "relayclaw",
           "defaultModel": "glm-5",
           "mcpSupport": true,
           "cli": {
-            "command": "dare",
+            "command": "jiuwenclaw-app",
             "outputFormat": "json"
           },
           "personality": "温暖亲切，耐心细致，善于倾听和陪伴式交流",
@@ -140,12 +140,11 @@
       "variants": [
         {
           "id": "agentteams-default",
-          "provider": "acp",
-          "defaultModel": "agent-teams",
+          "provider": "relayclaw",
+          "defaultModel": "glm-5",
           "mcpSupport": true,
           "cli": {
-            "command": "agent-teams",
-            "args": ["gateway", "acp", "stdio"],
+            "command": "jiuwenclaw-app",
             "outputFormat": "json"
           },
           "personality": "冷静高效的任务指挥官，擅长将复杂问题拆解为可执行步骤并协调多方资源完成",
@@ -155,7 +154,10 @@
             "maxContextTokens": 100000,
             "maxMessages": 100,
             "maxContentLengthPerMsg": 10000
-          }
+          },
+          "accountRef": "huawei-maas",
+          "providerProfileId": "huawei-maas",
+          "sessionChain": true
         }
       ]
     }

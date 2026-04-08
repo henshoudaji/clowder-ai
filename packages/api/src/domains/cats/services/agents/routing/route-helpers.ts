@@ -3,7 +3,7 @@
  * Shared types, interfaces, and helper functions for route-serial and route-parallel.
  */
 
-import type { CatId, MessageContent, RichBlock, RichBlockBase } from '@cat-cafe/shared';
+import { CAT_CONFIGS, catRegistry, type CatId, type MessageContent, type RichBlock, type RichBlockBase } from '@cat-cafe/shared';
 import { getCatContextBudget } from '../../../../../config/cat-budgets.js';
 import { estimateTokens } from '../../../../../utils/token-counter.js';
 import { formatMessage } from '../../context/ContextAssembler.js';
@@ -204,6 +204,40 @@ export function sanitizeInjectedContent(content: string): string {
   }
 
   return kept.join('\n').trim();
+}
+
+const DIRECT_MENTION_CONTINUATION_RE = /^[a-zA-Z0-9_]/;
+const DIRECT_MENTION_SEPARATOR_RE = /^[\s,.:;!?()[\]{}<>，。！？、：；（）【】《》「」『』〈〉-]+/;
+
+/**
+ * Remove the current cat's leading @mention so provider query fields receive only the user task.
+ * Keeps the original message unchanged when the mention is not a true line-start/direct address.
+ */
+export function stripLeadingDirectCatMention(message: string, catId: CatId): string {
+  const config = catRegistry.tryGet(catId as string)?.config ?? CAT_CONFIGS[catId as string];
+  const patterns = [...(config?.mentionPatterns ?? [])].sort((a, b) => b.length - a.length);
+  if (patterns.length === 0) return message.trim();
+
+  let remaining = message.trimStart();
+  let matched = false;
+
+  while (remaining.length > 0) {
+    const lowerRemaining = remaining.toLowerCase();
+    const matchedPattern = patterns.find((pattern) => {
+      const lowerPattern = pattern.toLowerCase();
+      if (!lowerRemaining.startsWith(lowerPattern)) return false;
+      const rest = remaining.slice(pattern.length);
+      return !DIRECT_MENTION_CONTINUATION_RE.test(rest);
+    });
+    if (!matchedPattern) break;
+
+    matched = true;
+    remaining = remaining.slice(matchedPattern.length).replace(DIRECT_MENTION_SEPARATOR_RE, '').trimStart();
+  }
+
+  const trimmedOriginal = message.trim();
+  if (!matched) return trimmedOriginal;
+  return remaining || trimmedOriginal;
 }
 
 /**

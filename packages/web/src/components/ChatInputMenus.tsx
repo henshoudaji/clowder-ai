@@ -132,7 +132,7 @@ export function ChatInputMenus({
                 value={mentionFilter}
                 onChange={(e) => onMentionFilterChange(e.target.value)}
                 placeholder="请输入关键字搜索"
-                className="w-full border-0 border-b border-gray-300 bg-transparent py-1 pl-6 pr-0 text-sm text-[#191919] outline-none focus:border-[#191919]"
+                className="ui-input ui-input-underline w-full py-1 pl-6 pr-0 text-sm"
               />
             </div>
           </div>

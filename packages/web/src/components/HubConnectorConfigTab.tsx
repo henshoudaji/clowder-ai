@@ -206,8 +206,8 @@ export function HubConnectorConfigTab() {
   const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? platforms[0] ?? null;
 
   return (
-    <div className="ui-panel grid lg:grid-cols-[304px_minmax(0,1fr)] h-full">
-      <div className="space-y-2 px-4 py-6 h-full" data-testid="connector-left-pane">
+    <div className="ui-panel flex h-full min-h-0 overflow-hidden">
+      <div className="h-full w-[304px] shrink-0 space-y-2 overflow-y-auto border-r border-[var(--border-default)] px-4 py-6" data-testid="connector-left-pane">
         {platforms.map((platform) => {
           const isSelected = selectedPlatform?.id === platform.id;
           const v = PLATFORM_VISUALS[platform.id] ?? DEFAULT_VISUAL;
@@ -224,8 +224,7 @@ export function HubConnectorConfigTab() {
               }}
             >
               <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"
-                style={{ backgroundColor: v.iconBg, color: v.iconColor }}
+                className="flex h-11 w-11 shrink-0 items-center justify-center"
               >
                 {v.icon}
               </span>
@@ -246,7 +245,7 @@ export function HubConnectorConfigTab() {
         })}
       </div>
 
-      <div className="py-6 px-12 h-full overflow-auto border-l border-[#e5e7eb] flex flex-col gap-6" data-testid="connector-right-pane">
+      <div className="flex h-full min-w-0 flex-1 flex-col gap-6 overflow-auto px-12 py-6" data-testid="connector-right-pane">
         <p className='text-[var(--text-primary)] font-semibold'>配置</p>
         {selectedPlatform && (() => {
           const platform = selectedPlatform;
@@ -266,7 +265,7 @@ export function HubConnectorConfigTab() {
                       </div>
                       {idx === 0 && (
                         <div className="ml-[26px]">
-                          <WeixinQrPanel configured={platform.configured} />
+                          <WeixinQrPanel configured={platform.configured} onConfigured={fetchStatus} />
                         </div>
                       )}
                     </div>
@@ -287,7 +286,7 @@ export function HubConnectorConfigTab() {
                           href={docsLink.href}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="ui-button-secondary ml-[26px] inline-flex items-center gap-1.5"
+                          className="ui-button-default ml-[26px] inline-flex items-center gap-1.5"
                         >
                           <ExternalLinkIcon />
                           <span>{docsLink.hostname} {'->'} 查看官方文档</span>
@@ -319,7 +318,7 @@ export function HubConnectorConfigTab() {
                             value={fieldValues[field.envName] ?? ''}
                             onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.envName]: e.target.value }))}
                             autoComplete={field.sensitive ? 'off' : undefined}
-                            className="ui-field h-9 w-full px-3 text-[13px]"
+                            className="ui-input h-9 w-full px-3 text-[13px]"
                             data-testid={`field-${field.envName}`}
                           />
                         </div>
@@ -344,7 +343,7 @@ export function HubConnectorConfigTab() {
                     <div className="ml-[26px] flex items-center gap-2">
                       <button
                         type="button"
-                        className="ui-button-secondary inline-flex items-center gap-1.5"
+                        className="ui-button-default inline-flex items-center gap-1.5"
                         onClick={() => setSaveResult({ type: 'success', message: '连接测试功能即将上线' })}
                       >
                         <WifiIcon />

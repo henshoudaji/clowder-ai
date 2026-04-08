@@ -86,6 +86,8 @@ export interface CapabilityBoardItem {
   tools?: McpToolInfo[];
   /** MCP connection status (only when ?probe=true) */
   connectionStatus?: 'connected' | 'disconnected' | 'unknown';
+  /** Skill installation timestamp (ISO 8601) for sorting */
+  installedAt?: string;
 }
 
 /** Lightweight MCP tool info for board display */

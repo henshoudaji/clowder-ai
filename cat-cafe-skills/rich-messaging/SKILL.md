@@ -58,7 +58,7 @@ triggers:
 ### 语音（audio）
 
 ```json
-{"id": "a1", "kind": "audio", "v": 1, "text": "喵，恭喜完成了喵！"}
+{"id": "a1", "kind": "audio", "v": 1, "text": "恭喜，完成了！"}
 ```
 
 ### 卡片（card）
@@ -100,7 +100,7 @@ triggers:
 {"id": "hw1", "kind": "html_widget", "v": 1, "html": "<div style='padding:20px'><canvas id='c'></canvas><script>const c=document.getElementById('c').getContext('2d');c.fillStyle='#E29578';c.fillRect(0,0,100,50);</script></div>"}
 ```
 
-铲屎官拍板："简单的用富文本，复杂的用猫主动打开浏览器。"
+原则：简单的用富文本，复杂的用 agent 主动打开浏览器。
 - 用 sandboxed iframe `srcdoc` 渲染，**禁止** `allow-same-origin`（比 browser panel 更严格）
 - 适合：Chart.js 图表、CSS 动画、计算器等纯前端组件
 - 不适合：需要网络请求、需要访问外部资源的复杂应用（那些用 `browser-preview` skill）
@@ -120,14 +120,13 @@ triggers:
 
 | 错误 | 后果 | 正确做法 |
 |------|------|----------|
-| 不知道自己能发语音 | 铲屎官说"发语音"你说"我是文字猫" | 你可以！用 audio block |
+| 不知道自己能发语音 | 用户说"发语音"你说"我不会" | 你可以！用 audio block |
 | audio 写长段话 | 合成效果差 | 短句口语化，1-2 句 |
-| 只发 block 不写文字 | 猫猫朋友看不懂上下文 | 先 post_message 再 block |
+| 只发 block 不写文字 | 其他 agent 看不懂上下文 | 先 post_message 再 block |
 | `"type"` 而不是 `"kind"` | block 创建失败 | 字段是 `kind` 不是 `type` |
 
 ## 和其他 skill 的区别
 
-- `request-review` / `quality-gate`：这些 skill 的**产出**可能包含 card/checklist block，但**何时用 block、怎么调**看这个 skill
 - `refs/rich-blocks.md`：更详细的字段规格参考，本 skill 是精简决策版
 
 ## 参考

@@ -25,12 +25,10 @@ export function DirectoryBrowserModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4"
-      onClick={onClose}
       data-testid="directory-browser-modal"
     >
       <div
         className="flex h-[620px] w-full max-w-[760px] flex-col overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-6 shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
         data-testid="directory-browser-modal-panel"
       >
         <div className="flex items-center justify-between">

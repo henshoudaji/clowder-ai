@@ -96,7 +96,7 @@ export function SectionGroup({
             <path d="M1.75 2A1.75 1.75 0 000 3.75v1.5C0 5.99.84 6.73 1.91 6.95L2 7v5.25c0 .97.78 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 12.25V7l.09-.05A1.75 1.75 0 0016 5.25v-1.5A1.75 1.75 0 0014.25 2H1.75zM1.5 3.75a.25.25 0 01.25-.25h12.5a.25.25 0 01.25.25v1.5a.25.25 0 01-.25.25H1.75a.25.25 0 01-.25-.25v-1.5zM3.5 7h9v5.25a.25.25 0 01-.25.25h-8.5a.25.25 0 01-.25-.25V7z" />
           </svg>
         )}
-        <span className="text-xs font-medium text-gray-500 truncate">{label}</span>
+        <span className="truncate text-xs font-medium text-[#808080]">{label}</span>
         {(() => {
           const dot = governanceStatus ? GOV_STATUS_DOT[governanceStatus] : undefined;
           return dot ? <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot.color}`} title={dot.title} /> : null;

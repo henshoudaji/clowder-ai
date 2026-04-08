@@ -352,10 +352,6 @@ export async function* routeParallel(
     }
     if (msg.type === 'error' && msg.catId) {
       catHadError.add(msg.catId);
-      if (msg.error) {
-        const prev = catText.get(msg.catId) ?? '';
-        catText.set(msg.catId, `${prev + (prev ? '\n\n' : '')}[错误] ${msg.error}`);
-      }
     }
     // F070: done with errorCode (e.g. GOVERNANCE_BOOTSTRAP_REQUIRED) is an error
     // state — mark catHadError so we don't fall through to silent_completion.

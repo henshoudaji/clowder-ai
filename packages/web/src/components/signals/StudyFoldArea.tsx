@@ -199,7 +199,7 @@ export function StudyFoldArea({
                   }
                 }}
                 placeholder="输入 Thread ID 关联..."
-                className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                className="ui-input flex-1 rounded-md px-2 py-1 text-xs"
               />
               <button
                 type="button"
@@ -326,7 +326,7 @@ export function StudyFoldArea({
                   }
                 }}
                 placeholder="新建学习集..."
-                className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs"
+                className="ui-input flex-1 rounded-md px-2 py-1 text-xs"
               />
               <button
                 type="button"

@@ -45,7 +45,7 @@ export function QuickCreateForm({ disabled, onCreate }: QuickCreateFormProps) {
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="任务标题"
-          className="w-full rounded-lg border border-[#E6D7C3] px-2 py-1.5 text-xs text-[#2C241B] outline-none focus:border-[#B8946A]"
+          className="ui-input ui-input-soft w-full rounded-lg px-2 py-1.5 text-xs"
           data-testid="mc-create-title"
         />
       </label>
@@ -56,7 +56,7 @@ export function QuickCreateForm({ disabled, onCreate }: QuickCreateFormProps) {
           value={summary}
           onChange={(event) => setSummary(event.target.value)}
           placeholder="一句话描述任务价值"
-          className="w-full rounded-lg border border-[#E6D7C3] px-2 py-1.5 text-xs text-[#2C241B] outline-none focus:border-[#B8946A]"
+          className="ui-input ui-input-soft w-full rounded-lg px-2 py-1.5 text-xs"
           data-testid="mc-create-summary"
         />
       </label>
@@ -82,7 +82,7 @@ export function QuickCreateForm({ disabled, onCreate }: QuickCreateFormProps) {
           value={tagsRaw}
           onChange={(event) => setTagsRaw(event.target.value)}
           placeholder="tags: redis,ui"
-          className="w-full rounded-lg border border-[#E6D7C3] px-2 py-1.5 text-xs text-[#2C241B] outline-none focus:border-[#B8946A]"
+          className="ui-input ui-input-soft w-full rounded-lg px-2 py-1.5 text-xs"
           data-testid="mc-create-tags"
         />
       </label>

@@ -7,6 +7,8 @@
 export {
   fetchSkillAllFiles,
   fetchSkillContent,
+  getSkillCategories,
+  listAllSkills,
   resolveSkills,
   type SkillHubResolveEntry,
   type SkillHubResolveResponse,

@@ -136,7 +136,7 @@ export function MessageActions({ message, threadId, children }: MessageActionsPr
     <div className="group relative w-[80%] mx-auto">
       {children}
 
-      {canAct && (
+      {false && (
         <div
           className={`opacity-0 group-hover:opacity-100 absolute ${toolbarPositionClass} right-1 flex gap-0.5 transition-opacity bg-white/90 rounded-lg shadow-sm border border-gray-200 px-1 py-0.5`}
         >
@@ -222,13 +222,13 @@ export function MessageActions({ message, threadId, children }: MessageActionsPr
 
       {/* Edit: inline textarea */}
       {dialog.type === 'edit' && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={close}>
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-base font-semibold mb-2">编辑消息</h3>
             <textarea
               value={dialog.editedContent}
               onChange={(e) => setDialog({ ...dialog, editedContent: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 h-32 resize-y focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="ui-textarea w-full rounded-lg px-3 py-2 text-sm mb-4 h-32"
             />
             <div className="flex justify-end gap-2">
               <button onClick={close} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">

@@ -14,7 +14,6 @@ import { buildACPMetadata, collectTrailingUpdates, transformIncomingUpdateMessag
 import { ACPStdioClient } from './acp-transport.js';
 
 const acpLog = createModuleLogger('acp');
-const DEFAULT_ACP_TIMEOUT_MS = 10 * 60 * 1000;
 const ACP_RECOVERABLE_PAUSE_REASON = 'recoverable_pause';
 const ACP_RECOVERABLE_PAUSE_ERROR = 'Session has a recoverable paused run; use session/resume or session/cancel';
 
@@ -127,7 +126,7 @@ function recoverablePauseMessage(
   catId: CatId,
   sessionId: string | undefined,
   metadataModel = 'acp',
-  message = '上次运行已暂停，可继续执行或放弃当前会话。',
+  message = 'Previous ACP run is paused; resume or cancel the current session.',
 ): AgentMessage {
   return {
     type: 'system_info',
@@ -146,9 +145,10 @@ function recoverablePauseMessage(
 
 function isRecoverablePauseResult(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false;
-  const runStatus = typeof (result as { runStatus?: unknown }).runStatus === 'string'
-    ? (result as { runStatus: string }).runStatus
-    : '';
+  const runStatus =
+    typeof (result as { runStatus?: unknown }).runStatus === 'string'
+      ? (result as { runStatus: string }).runStatus
+      : '';
   return runStatus === 'paused' && (result as { recoverable?: unknown }).recoverable === true;
 }
 
@@ -200,7 +200,7 @@ function buildSessionParams(
   options?: AgentServiceOptions,
 ): Record<string, unknown> {
   const resolvedWorkingDirectory = workingDirectory ?? providerProfile.cwd;
-  const mcpServers = buildAcpMcpServers(initializeResult, options);
+  const mcpServers = buildAcpMcpServers(initializeResult, { ...options, workingDirectory: resolvedWorkingDirectory });
   return {
     ...(resolvedWorkingDirectory ? { cwd: resolvedWorkingDirectory } : {}),
     mcpServers,
@@ -325,8 +325,12 @@ export class ACPAgentService implements AgentService {
     let aborted = false;
     const mcpBridge = new ACPMcpBridge(options);
     const abortSignal = options?.signal;
-    const timeoutSignal = AbortSignal.timeout(DEFAULT_ACP_TIMEOUT_MS);
-    const combinedSignal = abortSignal ? AbortSignal.any([abortSignal, timeoutSignal]) : timeoutSignal;
+    const cancelCurrentRun = async (): Promise<void> => {
+      aborted = true;
+      if (sessionId) {
+        await client.notify('session/cancel', { sessionId }).catch(() => {});
+      }
+    };
 
     try {
       await client.start();
@@ -379,24 +383,31 @@ export class ACPAgentService implements AgentService {
         timestamp: Date.now(),
       };
 
+      if (abortSignal?.aborted) {
+        await cancelCurrentRun();
+        yield doneMessage(this.catId, sessionId, metadataModel);
+        return;
+      }
+
       const executionCall = buildACPExecutionCall(sessionId, prompt, options);
       const promptPromise = client.call(executionCall.method, executionCall.params).then(
         (result) => ({ kind: 'prompt_result' as const, result }),
         (error) => ({ kind: 'prompt_error' as const, error }),
       );
-      const abortPromise = new Promise<{ kind: 'abort' }>((resolve) => {
-        combinedSignal.addEventListener('abort', () => resolve({ kind: 'abort' }), { once: true });
-      });
+      const abortPromise = abortSignal
+        ? new Promise<{ kind: 'abort' }>((resolve) => {
+            abortSignal.addEventListener('abort', () => resolve({ kind: 'abort' }), { once: true });
+          })
+        : null;
 
       let nextMessagePromise = client.nextMessage().then((message) => ({ kind: 'message' as const, message }));
       let done = false;
       while (!done) {
-        const outcome = await Promise.race([promptPromise, abortPromise, nextMessagePromise]);
+        const outcome = abortPromise
+          ? await Promise.race([promptPromise, abortPromise, nextMessagePromise])
+          : await Promise.race([promptPromise, nextMessagePromise]);
         if (outcome.kind === 'abort') {
-          aborted = true;
-          if (sessionId) {
-            await client.notify('session/cancel', { sessionId }).catch(() => {});
-          }
+          await cancelCurrentRun();
           break;
         }
         if (outcome.kind === 'prompt_error') {

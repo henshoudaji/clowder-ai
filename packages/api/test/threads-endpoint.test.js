@@ -680,6 +680,36 @@ describe('Thread soft-delete preserves data (Phase D)', () => {
     assert.equal(taskStore.listByThread(threadId).length, 1);
     assert.equal(memoryStore.list(threadId).length, 1);
   });
+
+  it('DELETE /api/threads/:id removes connector bindings for the deleted thread', async () => {
+    const { MemoryConnectorThreadBindingStore } = await import(
+      '../dist/infrastructure/connectors/ConnectorThreadBindingStore.js'
+    );
+    const { ThreadStore } = await import('../dist/domains/cats/services/stores/ports/ThreadStore.js');
+    const { threadsRoutes } = await import('../dist/routes/threads.js');
+
+    const connectorBindingStore = new MemoryConnectorThreadBindingStore();
+    const localThreadStore = new ThreadStore();
+    const localApp = Fastify();
+    await localApp.register(threadsRoutes, {
+      threadStore: localThreadStore,
+      connectorBindingStore,
+    });
+    await localApp.ready();
+
+    const thread = localThreadStore.create('alice', 'Bound Thread');
+    connectorBindingStore.bind('weixin', 'wx-chat-1', thread.id, 'alice');
+    connectorBindingStore.bind('feishu', 'fs-chat-9', thread.id, 'alice');
+
+    const res = await localApp.inject({
+      method: 'DELETE',
+      url: `/api/threads/${thread.id}`,
+    });
+    assert.equal(res.statusCode, 204);
+    assert.deepEqual(connectorBindingStore.getByThread(thread.id), []);
+
+    await localApp.close();
+  });
 });
 
 describe('Thread delete invocation protection (#35)', () => {

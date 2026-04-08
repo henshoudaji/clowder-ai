@@ -17,4 +17,12 @@ describe('MarkdownContent mention highlighting', () => {
     expect(html).toContain('color:#9B7EBD'); // opus
     expect(html).toContain('color:#5B9BD5'); // gemini
   });
+
+  it('renders mention ids as display names', () => {
+    const html = render('@office 帮我整理一下，并且 @codex 看代码');
+    expect(html).toContain('@办公助理');
+    expect(html).toContain('@缅因猫');
+    expect(html).not.toContain('@office');
+    expect(html).not.toContain('@codex');
+  });
 });

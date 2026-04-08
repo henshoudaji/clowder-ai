@@ -132,7 +132,22 @@ function validateConfig(config) {
   }
 }
 
+function isExcludedCommandPath(commandPath) {
+  if (!commandPath) {
+    return true;
+  }
+  return process.platform === 'win32' && commandPath.toLowerCase().includes('\\microsoft\\windowsapps\\');
+}
+
 function hasCommand(command, args = []) {
+  const resolved = spawnSync(command, ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8' });
+  if (resolved.status !== 0) {
+    return false;
+  }
+  const executablePath = `${resolved.stdout ?? ''}`.trim();
+  if (isExcludedCommandPath(executablePath)) {
+    return false;
+  }
   const result = spawnSync(command, args, { stdio: 'ignore' });
   return result.status === 0;
 }

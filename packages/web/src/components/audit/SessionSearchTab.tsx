@@ -65,7 +65,7 @@ export function SessionSearchTab({ threadId, onViewSession }: SessionSearchTabPr
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜索 session 内容..."
-          className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-blue-300"
+          className="ui-input flex-1 text-xs rounded px-2 py-1"
         />
         <button
           type="submit"

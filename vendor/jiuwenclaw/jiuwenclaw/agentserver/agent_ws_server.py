@@ -7,12 +7,21 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, ClassVar
 
 from jiuwenclaw.utils import get_agent_sessions_dir, logger
 from jiuwenclaw.schema.agent import AgentRequest, AgentResponse, AgentResponseChunk
+
+
+def _agent_request_detail_json(request: AgentRequest) -> str:
+    """完整请求 JSON（含 params 内 query、system_prompt 等，用于排障）。"""
+    d = asdict(request)
+    rm = request.req_method
+    d["req_method"] = rm.value if rm is not None and hasattr(rm, "value") else rm
+    return json.dumps(d, ensure_ascii=False, default=str)
 
 
 def _payload_to_request(data: dict[str, Any]) -> AgentRequest:
@@ -108,12 +117,20 @@ class AgentWebSocketServer:
             ping_interval=ping_interval,
             ping_timeout=ping_timeout,
         )
+        logger.info(
+            "[AgentWebSocketServer] 单例已创建 host=%s port=%s ping_interval=%s ping_timeout=%s",
+            host,
+            port,
+            ping_interval,
+            ping_timeout,
+        )
         return cls._instance
 
     @classmethod
     def reset_instance(cls) -> None:
         """重置单例（仅用于测试）。"""
         cls._instance = None
+        logger.info("[AgentWebSocketServer] reset_instance 单例已清除")
 
     @property
     def host(self) -> str:
@@ -131,6 +148,13 @@ class AgentWebSocketServer:
             logger.warning("[AgentWebSocketServer] 服务端已在运行")
             return
 
+        logger.info(
+            "[AgentWebSocketServer] 启动中 host=%s port=%s ping_interval=%s ping_timeout=%s",
+            self._host,
+            self._port,
+            self._ping_interval,
+            self._ping_timeout,
+        )
         try:
             from websockets.legacy.server import serve as legacy_serve
             self._server = await legacy_serve(
@@ -150,13 +174,19 @@ class AgentWebSocketServer:
                 ping_timeout=self._ping_timeout,
             )
         logger.info(
-            "[AgentWebSocketServer] 已启动: ws://%s:%s", self._host, self._port
+            "[AgentWebSocketServer] 已启动监听: ws://%s:%s", self._host, self._port
         )
 
     async def stop(self) -> None:
         """停止 WebSocket 服务端."""
         if self._server is None:
+            logger.info("[AgentWebSocketServer] stop 跳过（未在运行）")
             return
+        logger.info(
+            "[AgentWebSocketServer] 停止中 host=%s port=%s",
+            self._host,
+            self._port,
+        )
         self._server.close()
         await self._server.wait_closed()
         self._server = None
@@ -222,10 +252,9 @@ class AgentWebSocketServer:
         request = _payload_to_request(data)
 
         logger.info(
-            "[AgentWebSocketServer] 收到请求: request_id=%s channel_id=%s is_stream=%s",
-            request.request_id,
-            request.channel_id,
+            "[AgentWebSocketServer] 收到请求 is_stream=%s detail=%s",
             request.is_stream,
+            _agent_request_detail_json(request),
         )
 
         try:
@@ -260,27 +289,35 @@ class AgentWebSocketServer:
 
     async def _handle_unary(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
         """非流式处理：调用 process_message，返回一条完整 AgentResponse."""
+        t0 = time.monotonic()
         resp = await self._agent.process_message(request)
         payload = _response_to_payload(resp)
         async with send_lock:
             await ws.send(json.dumps(payload, ensure_ascii=False))
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
-            "[AgentWebSocketServer] 非流式响应已发送: request_id=%s",
+            "[AgentWebSocketServer] 非流式响应已发送 request_id=%s ok=%s elapsed_ms=%s payload=%s",
             request.request_id,
+            getattr(resp, "ok", True),
+            elapsed_ms,
+            json.dumps(_response_to_payload(resp), ensure_ascii=False, default=str),
         )
 
     async def _handle_stream(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
         """流式处理：调用 process_message_stream，逐条发送 AgentResponseChunk."""
         chunk_count = 0
+        t0 = time.monotonic()
         async for chunk in self._agent.process_message_stream(request):
             chunk_count += 1
             payload = _chunk_to_payload(chunk)
             async with send_lock:
                 await ws.send(json.dumps(payload, ensure_ascii=False))
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
-            "[AgentWebSocketServer] 流式响应已发送: request_id=%s 共 %s 个 chunk",
+            "[AgentWebSocketServer] 流式响应已发送 request_id=%s chunks=%s elapsed_ms=%s",
             request.request_id,
             chunk_count,
+            elapsed_ms,
         )
 
     async def _handle_history_get(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:

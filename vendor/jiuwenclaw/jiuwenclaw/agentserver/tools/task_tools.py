@@ -452,7 +452,6 @@ async def experience_clear() -> Dict[str, Any]:
 def get_task_tools() -> List:
     """Return the list of task tool functions."""
     return [
-        experience_retrieve,
         experience_learn,
         experience_clear,
     ]

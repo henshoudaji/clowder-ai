@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { McpServerDescriptor } from '@cat-cafe/shared';
 import type { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import type { JSONRPCMessage, JSONRPCRequest } from '@modelcontextprotocol/sdk/types.js';
 import {
-  JSONRPC_VERSION,
   isJSONRPCErrorResponse,
   isJSONRPCNotification,
   isJSONRPCRequest,
   isJSONRPCResultResponse,
+  JSONRPC_VERSION,
 } from '@modelcontextprotocol/sdk/types.js';
-import type { JSONRPCMessage, JSONRPCRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { AgentServiceOptions } from '../../types.js';
 import { ACPRequestError, ACPStdioClient } from './acp-transport.js';
 import { buildCatCafeMcpRequestConfig } from './relayclaw-catcafe-mcp.js';
@@ -49,16 +52,74 @@ export function buildAcpMcpServers(
       },
     ];
   }
+  const servers = readProjectMcpServers(options?.workingDirectory);
   const catCafeMcp = buildCatCafeMcpRequestConfig(options);
-  if (!catCafeMcp) return [];
-  return [
-    {
+  if (catCafeMcp) {
+    servers.unshift({
       id: 'cat-cafe',
       name: 'cat-cafe',
       transport: 'stdio',
       ...catCafeMcp,
-    },
-  ];
+    });
+  }
+  return servers;
+}
+
+function readProjectMcpServers(workingDirectory?: string): Array<Record<string, unknown>> {
+  if (!workingDirectory) return [];
+  const filePath = join(workingDirectory, '.mcp.json');
+  if (!existsSync(filePath)) return [];
+
+  try {
+    // Keep the ACP relay aligned with the project's Claude MCP config.
+    const raw = readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(raw);
+    const servers =
+      data && typeof data === 'object' && !Array.isArray(data) && data.mcpServers && typeof data.mcpServers === 'object'
+        ? data.mcpServers
+        : null;
+    if (!servers) return [];
+    return Object.entries(servers as Record<string, Record<string, unknown>>)
+      .map(([name, cfg]) => toLocalAcpMcpServer(name, cfg))
+      .filter((server): server is Record<string, unknown> => server !== null);
+  } catch {
+    return [];
+  }
+}
+
+function toLocalAcpMcpServer(name: string, cfg: Record<string, unknown>): Record<string, unknown> | null {
+  const descriptor = toClaudeDescriptor(name, cfg);
+  if (descriptor.transport === 'streamableHttp') return null;
+  if (!descriptor.command.trim()) return null;
+  if (descriptor.name === 'cat-cafe') return null;
+  return {
+    id: descriptor.name,
+    name: descriptor.name,
+    transport: 'stdio',
+    command: descriptor.command,
+    args: descriptor.args,
+    ...(descriptor.workingDir ? { cwd: descriptor.workingDir } : {}),
+    ...(descriptor.env ? { env: descriptor.env } : {}),
+  };
+}
+
+function toClaudeDescriptor(name: string, cfg: Record<string, unknown>): McpServerDescriptor {
+  const isHttp = cfg.type === 'streamableHttp' || cfg.type === 'http';
+  const descriptor: McpServerDescriptor = {
+    name,
+    command: typeof cfg.command === 'string' ? cfg.command : '',
+    args: Array.isArray(cfg.args) ? cfg.args.filter((value): value is string => typeof value === 'string') : [],
+    enabled: true,
+    source: 'external',
+  };
+  if (isHttp) descriptor.transport = 'streamableHttp';
+  if (typeof cfg.cwd === 'string' && cfg.cwd) descriptor.workingDir = cfg.cwd;
+  if (cfg.env && typeof cfg.env === 'object' && !Array.isArray(cfg.env)) {
+    descriptor.env = Object.fromEntries(
+      Object.entries(cfg.env as Record<string, unknown>).map(([key, value]) => [key, String(value)]),
+    );
+  }
+  return descriptor;
 }
 
 type JsonRpcId = number | string;
@@ -255,7 +316,8 @@ export class ACPMcpBridge {
       const result = await agentClient.call('mcp/connect', { sessionId, acpId: serverId });
       const connectionId =
         typeof result.connectionId === 'string' && result.connectionId.trim() ? result.connectionId.trim() : '';
-      if (!connectionId) throw new ACPRequestError(-32000, `ACP MCP connect for ${serverId} did not return connectionId`);
+      if (!connectionId)
+        throw new ACPRequestError(-32000, `ACP MCP connect for ${serverId} did not return connectionId`);
       await this.createLocalConnection(sessionId, serverId, connectionId);
     }
   }
@@ -263,9 +325,7 @@ export class ACPMcpBridge {
   async disconnectSessionServers(agentClient: ACPStdioClient): Promise<void> {
     const activeConnections = [...this.connections.entries()];
     for (const [connectionId, connection] of activeConnections) {
-      await agentClient
-        .call('mcp/disconnect', { sessionId: connection.sessionId, connectionId })
-        .catch(() => {});
+      await agentClient.call('mcp/disconnect', { sessionId: connection.sessionId, connectionId }).catch(() => {});
       await this.closeConnection({ sessionId: connection.sessionId, connectionId });
     }
   }
@@ -280,7 +340,8 @@ export class ACPMcpBridge {
     if (method !== 'mcp/connect' && method !== 'mcp/message' && method !== 'mcp/disconnect') return false;
 
     const params = asObject(message?.params);
-    const responseId = typeof message?.id === 'number' || typeof message?.id === 'string' ? (message.id as JsonRpcId) : undefined;
+    const responseId =
+      typeof message?.id === 'number' || typeof message?.id === 'string' ? (message.id as JsonRpcId) : undefined;
 
     try {
       const sessionId = readSessionId(params);

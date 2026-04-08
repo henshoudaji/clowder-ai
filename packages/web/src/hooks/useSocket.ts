@@ -69,6 +69,7 @@ type DebugWebSocket = WebSocket & { __catCafeCloseLoggerAttached?: boolean };
 
 export interface SocketCallbacks {
   onMessage: (msg: AgentMessage) => void;
+  onThreadCreated?: (data: { threadId: string; source?: string }) => void;
   onThreadUpdated?: (data: { threadId: string; title: string }) => void;
   onIntentMode?: (data: { threadId: string; mode: string; targetCats: string[] }) => void;
   onTaskCreated?: (task: Record<string, unknown>) => void;
@@ -280,6 +281,9 @@ export function useSocket(callbacks: SocketCallbacks, threadId?: string) {
 
     socket.on('thread_updated', (data: { threadId: string; title: string }) => {
       callbacksRef.current.onThreadUpdated?.(data);
+    });
+    socket.on('thread_created', (data: { threadId: string; source?: string }) => {
+      callbacksRef.current.onThreadCreated?.(data);
     });
 
     socket.on(

@@ -49,6 +49,7 @@ feat-lifecycle → Design Gate(设计确认) → writing-plans → worktree → 
 | `nano-pdf` | 用自然语言编辑 PDF |
 | `diagram-generator` | 生成流程图/序列图/ER图/架构图 |
 | `doc-coauthoring` | 结构化文档协作（技术提案/spec/决策文档） |
+| `pptx-craft`        | 创建/编辑/读取演示文稿（.pptx） |
 
 ### 搜索与信息
 
@@ -69,6 +70,7 @@ feat-lifecycle → Design Gate(设计确认) → writing-plans → worktree → 
 | `persistent-agent-memory` | Agent 持久化记忆（跨 session 上下文） |
 | `self-improving-agent` | 捕获错误/纠正，持续自我改进 |
 | `evolver` | Agent 自我进化引擎（分析运行历史） |
+| `schedule-tasks`          | 创建定时任务  |
 
 ### 工具与自动化
 

@@ -1,12 +1,12 @@
 # Windows Python Wheelhouse Notes
 
-本文记录 Windows 安装包里 Python 依赖的离线分发方案，重点是 `cool-play-agent-teams` 这类会在安装时生成 `Scripts/*.exe` launcher 的包。
+本文记录 Windows 安装包里 Python 依赖的离线分发方案，重点是 `relay-teams` 这类会在安装时生成 `Scripts/*.exe` launcher 的包。
 
 ## Why
 
-- 如果在打包机上直接 `pip install cool-play-agent-teams`，生成出来的 `agent-teams.exe` 可能固化打包机路径
+- 如果在打包机上直接 `pip install relay-teams`，生成出来的 `relay-teams.exe` 可能固化打包机路径
 - 更稳的做法是：打包阶段先准备 `.whl`，用户安装 exe 后，再用安装目录里的 `python.exe` 离线安装这些 wheel
-- 这样 `agent-teams.exe` 会在最终安装目录重新生成，指向用户本地的 `tools/python/python.exe`
+- 这样 `relay-teams.exe` 会在最终安装目录重新生成，指向用户本地的 `tools/python/python.exe`
 
 ## Current Scripts
 
@@ -16,7 +16,7 @@
 
 ## Build Wheelhouse With Script
 
-默认配置会下载整个 Windows Python runtime 依赖组，不只包含 `cool-play-agent-teams`。
+默认配置会下载整个 Windows Python runtime 依赖组，不只包含 `relay-teams`。
 
 如果你是在 Windows 打包机上准备给安装包做离线依赖，优先用这条命令：
 
@@ -37,7 +37,7 @@ pnpm package:windows:python-wheelhouse:win
 - `dist/windows-python-wheelhouse/python-wheelhouse-manifest.json`
 
 ```bash
-pnpm package:windows:python-wheelhouse -- --output-dir ./dist/agent-teams-wheelhouse
+pnpm package:windows:python-wheelhouse -- --output-dir ./dist/relay-teams-wheelhouse
 ```
 
 等价命令：
@@ -45,17 +45,17 @@ pnpm package:windows:python-wheelhouse -- --output-dir ./dist/agent-teams-wheelh
 ```bash
 node scripts/prepare-python-wheelhouse.mjs \
   --config ./packaging/windows/python-runtime-wheelhouse.json \
-  --output-dir ./dist/agent-teams-wheelhouse
+  --output-dir ./dist/relay-teams-wheelhouse
 ```
 
 成功后默认产物：
 
-- wheel 目录：`dist/agent-teams-wheelhouse/wheelhouse/shared-runtime/`
-- manifest：`dist/agent-teams-wheelhouse/python-wheelhouse-manifest.json`
+- wheel 目录：`dist/relay-teams-wheelhouse/wheelhouse/shared-runtime/`
+- manifest：`dist/relay-teams-wheelhouse/python-wheelhouse-manifest.json`
 
-## Build Agent-Teams Only
+## Build Relay-Teams Only
 
-如果只想验证 `cool-play-agent-teams` 及其传递依赖，建议先用一个最小配置，例如：
+如果只想验证 `relay-teams` 及其传递依赖，建议先用一个最小配置，例如：
 
 ```json
 {
@@ -68,10 +68,10 @@ node scripts/prepare-python-wheelhouse.mjs \
   },
   "groups": [
     {
-      "id": "agent-teams",
-      "description": "agent-teams only",
+      "id": "relay-teams",
+      "description": "relay-teams only",
       "packages": [
-        "cool-play-agent-teams"
+        "relay-teams"
       ]
     }
   ]
@@ -82,54 +82,54 @@ node scripts/prepare-python-wheelhouse.mjs \
 
 ```bash
 node scripts/prepare-python-wheelhouse.mjs \
-  --config ./packaging/windows/agent-teams-wheelhouse.json \
-  --output-dir ./dist/agent-teams-wheelhouse
+  --config ./packaging/windows/relay-teams-wheelhouse.json \
+  --output-dir ./dist/relay-teams-wheelhouse
 ```
 
 成功后：
 
-- wheel 目录：`dist/agent-teams-wheelhouse/wheelhouse/agent-teams/`
-- manifest：`dist/agent-teams-wheelhouse/python-wheelhouse-manifest.json`
+- wheel 目录：`dist/relay-teams-wheelhouse/wheelhouse/relay-teams/`
+- manifest：`dist/relay-teams-wheelhouse/python-wheelhouse-manifest.json`
 
 ## Minimal Direct pip Download
 
-如果想先绕过仓库脚本，直接验证 `cool-play-agent-teams` 是否能完整下载 Windows wheel，可以执行：
+如果想先绕过仓库脚本，直接验证 `relay-teams` 是否能完整下载 Windows wheel，可以执行：
 
 ```bash
 python3 -m pip download \
-  --dest ./dist/agent-teams-wheelhouse \
+  --dest ./dist/relay-teams-wheelhouse \
   --only-binary=:all: \
   --platform win_amd64 \
   --python-version 3.13 \
   --implementation cp \
   --abi cp313 \
-  cool-play-agent-teams
+  relay-teams
 ```
 
 如果本机没有 `python3`，可改成：
 
 ```bash
 python -m pip download \
-  --dest ./dist/agent-teams-wheelhouse \
+  --dest ./dist/relay-teams-wheelhouse \
   --only-binary=:all: \
   --platform win_amd64 \
   --python-version 3.13 \
   --implementation cp \
   --abi cp313 \
-  cool-play-agent-teams
+  relay-teams
 ```
 
 更推荐指定精确版本，减少 resolver 回溯：
 
 ```bash
 python3 -m pip download \
-  --dest ./dist/agent-teams-wheelhouse \
+  --dest ./dist/relay-teams-wheelhouse \
   --only-binary=:all: \
   --platform win_amd64 \
   --python-version 3.13 \
   --implementation cp \
   --abi cp313 \
-  cool-play-agent-teams==<version>
+  relay-teams==<version>
 ```
 
 ## Why It Looks Strange On macOS
@@ -191,7 +191,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\manual-install-windows-runtim
 - 找到 wheelhouse 里的 `python-wheelhouse-manifest.json`
 - 调用 `scripts/install-python-wheelhouse.ps1`
 - 以 `--no-index --find-links ...` 的方式离线安装 `shared-runtime`
-- 因为默认带 `-ForceReinstall`，所以像 `agent-teams.exe` 这类 launcher 会在最终安装目录重建
+- 因为默认带 `-ForceReinstall`，所以像 `relay-teams.exe` 这类 launcher 会在最终安装目录重建
 
 如果你只想先看它会执行什么，不真正安装：
 
@@ -216,11 +216,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-python-wheelhouse.ps1
 
 - 使用安装目录里的 `python.exe`
 - 以 `--no-index --find-links ...` 的方式离线安装本地 wheel
-- 重新生成 `Scripts\agent-teams.exe`
-- 避免 `agent-teams.exe` 绑定打包机路径
+- 重新生成 `Scripts\relay-teams.exe`
+- 避免 `relay-teams.exe` 绑定打包机路径
 
 ## Notes
 
-- 当前默认配置 `packaging/windows/python-runtime-wheelhouse.json` 是“整组 shared-runtime”，不是“只下载 agent-teams”
+- 当前默认配置 `packaging/windows/python-runtime-wheelhouse.json` 是“整组 shared-runtime”，不是“只下载 relay-teams”
 - 如果某个依赖在 `win_amd64 + cp313` 下没有 wheel，`--only-binary=:all:` 会直接失败；这是预期行为，能提前暴露兼容性问题
 - 后续接 installer 时，推荐流程是：打包阶段准备 wheelhouse，安装阶段离线 `pip install --force-reinstall`

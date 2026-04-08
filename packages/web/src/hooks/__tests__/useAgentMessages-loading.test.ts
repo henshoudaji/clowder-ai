@@ -180,9 +180,9 @@ describe('useAgentMessages loading lifecycle', () => {
     expect(mockSetIntentMode).toHaveBeenCalledWith(null);
     expect(mockAddMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'system',
-        variant: 'error',
-        content: 'Error: something broke',
+        type: 'assistant',
+        catId: 'opus',
+        content: '这次处理没有顺利完成。我先结束本次尝试，你可以稍后重试，或换一种更短、更明确的问法。',
       }),
     );
   });
@@ -483,6 +483,134 @@ describe('useAgentMessages loading lifecycle', () => {
     });
 
     expect(mockSetStreaming).toHaveBeenCalledWith('bg-msg-err', false);
+  });
+
+  it('rewrites dare cli timeout to a normal assistant fallback', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'system_info',
+        catId: 'dare',
+        content: JSON.stringify({
+          type: 'timeout_diagnostics',
+          silenceDurationMs: 1800000,
+          processAlive: true,
+          lastEventType: 'tool.invoke',
+        }),
+      });
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'error',
+        catId: 'dare',
+        error: 'DARE CLI 响应超时 (1800s)',
+        metadata: { provider: 'dare', model: 'test/model' },
+      });
+    });
+
+    expect(mockAddMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'assistant',
+        catId: 'dare',
+        content: expect.stringContaining('这次响应花了太久'),
+      }),
+    );
+  });
+
+  it('rewrites dare cli exit to a user-friendly fallback', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'error',
+        catId: 'dare',
+        error: 'DARE CLI: CLI 异常退出 (code: 1, signal: none)',
+        metadata: { provider: 'dare', model: 'test/model' },
+      });
+    });
+
+    expect(mockAddMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'assistant',
+        catId: 'dare',
+        content: expect.stringContaining('这次响应中断了'),
+      }),
+    );
+  });
+
+  it('rewrites jiuwen timeout to a user-friendly fallback', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'error',
+        catId: 'jiuwenclaw',
+        error: 'jiuwen request timed out before completion',
+        metadata: { provider: 'relayclaw', model: 'test/model' },
+      });
+    });
+
+    expect(mockAddMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'assistant',
+        catId: 'jiuwenclaw',
+        content: expect.stringContaining('这次响应花了太久'),
+      }),
+    );
+  });
+
+  it('rewrites jiuwen connection failure to a user-friendly fallback', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'error',
+        catId: 'jiuwenclaw',
+        error: 'jiuwen connection failed: sidecar exited during startup',
+        metadata: { provider: 'relayclaw', model: 'test/model' },
+      });
+    });
+
+    expect(mockAddMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'assistant',
+        catId: 'jiuwenclaw',
+        content: expect.stringContaining('连接不稳定'),
+      }),
+    );
+  });
+
+  it('rewrites unknown errors to a generic assistant fallback instead of raw error text', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'error',
+        catId: 'opus',
+        error: 'unrecognized low-level failure details',
+        metadata: { provider: 'claude', model: 'test/model' },
+      });
+    });
+
+    expect(mockAddMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'assistant',
+        catId: 'opus',
+        content: expect.not.stringContaining('unrecognized low-level failure details'),
+      }),
+    );
   });
 
   it('system_info context_health without parsed catId falls back to msg.catId', () => {

@@ -45,7 +45,8 @@ export interface RelayClawLaunchCommand {
 
 export interface RelayClawSidecarController {
   ensureStarted(options?: AgentServiceOptions, signal?: AbortSignal): Promise<string>;
-  stop(): void;
+  /** @param reason Diagnostic tag for logs (e.g. runtime_signature_changed). */
+  stop(reason?: string): void;
   getRecentLogs(): string;
 }
 
@@ -89,7 +90,7 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
     }
 
     if (this.child && this.runtimeHash !== runtimeHash) {
-      this.stop();
+      this.stop('runtime_signature_changed');
     }
 
     if (this.bootPromise) {
@@ -106,12 +107,23 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
     }
   }
 
-  stop(): void {
-    if (this.child && this.child.exitCode === null) {
-      if (process.platform === 'win32' && this.child.pid) {
-        spawnSync('taskkill', ['/PID', String(this.child.pid), '/T', '/F'], { stdio: 'ignore' });
+  stop(reason = 'unspecified'): void {
+    const child = this.child;
+    const willKill = Boolean(child && child.exitCode === null);
+    log.warn(
+      {
+        catId: this.catId,
+        sidecarPid: child?.pid,
+        willKill,
+        reason,
+      },
+      'relayclaw sidecar stop invoked',
+    );
+    if (willKill && child) {
+      if (process.platform === 'win32' && child.pid) {
+        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
       } else {
-        this.child.kill('SIGTERM');
+        child.kill('SIGTERM');
       }
     }
     this.child = null;
@@ -226,6 +238,19 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
     });
     this.child = child;
     this.runtimeHash = createHash('sha256').update(JSON.stringify(runtime.signature)).digest('hex');
+    const sidecarPid = child.pid;
+    log.info(
+      {
+        catId: this.catId,
+        sidecarPid,
+        agentPort,
+        webPort,
+        command: launchCommand.command,
+        args: launchCommand.args,
+        cwd: launchCommand.cwd,
+      },
+      'relayclaw sidecar spawned',
+    );
 
     const pushLog = (chunk: Buffer) => {
       this.recentLogs = `${this.recentLogs}${chunk.toString('utf-8')}`.slice(-8000);
@@ -233,26 +258,57 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
     child.stdout?.on('data', pushLog);
     child.stderr?.on('data', pushLog);
     child.once('exit', (code, exitSignal) => {
-      log.warn({ catId: this.catId, code, exitSignal }, 'relayclaw sidecar exited');
+      if (this.child !== child) {
+        return;
+      }
+      const tail = summarizeLogs(this.recentLogs);
+      log.warn(
+        {
+          catId: this.catId,
+          sidecarPid,
+          code,
+          exitSignal,
+          logChars: this.recentLogs.length,
+          ...(tail ? { logTail: tail } : {}),
+          ...(this.recentLogs.length > 0
+            ? { stderrPreview: this.recentLogs.slice(-1500) }
+            : {}),
+        },
+        'relayclaw sidecar exited',
+      );
       this.child = null;
       this.runtimeHash = null;
       this.resolvedUrl = null;
     });
 
     if (signal?.aborted) {
-      this.stop();
+      this.stop('startup_aborted_signal');
       throw new Error('jiuwen sidecar startup aborted');
     }
 
     const timeoutAt = Date.now() + (this.config.startupTimeoutMs ?? 180_000);
     while (Date.now() < timeoutAt) {
       if (signal?.aborted) {
-        this.stop();
+        this.stop('startup_aborted_signal');
         throw new Error('jiuwen sidecar startup aborted');
       }
       if (!this.child || this.child.exitCode !== null) {
+        const tail = summarizeLogs(this.recentLogs);
+        log.warn(
+          {
+            catId: this.catId,
+            sidecarPid,
+            exitCode: this.child?.exitCode ?? null,
+            logChars: this.recentLogs.length,
+            ...(tail ? { logTail: tail } : {}),
+            ...(this.recentLogs.length > 0
+              ? { stderrPreview: this.recentLogs.slice(-1500) }
+              : {}),
+          },
+          'relayclaw sidecar startup failed: process exited before ready',
+        );
         throw new Error(
-          `jiuwen sidecar exited during startup${this.recentLogs ? `: ${summarizeLogs(this.recentLogs)}` : ''}`,
+          `jiuwen sidecar exited during startup${this.recentLogs ? `: ${tail}` : ''}`,
         );
       }
       if (await isRelayClawRuntimeReady(runtime, this.tcpProbeFn, this.recentLogs, agentPort, webPort)) {
@@ -261,9 +317,21 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    this.stop();
+    const tail = summarizeLogs(this.recentLogs);
+    log.warn(
+      {
+        catId: this.catId,
+        sidecarPid,
+        exitCode: this.child?.exitCode ?? null,
+        logChars: this.recentLogs.length,
+        ...(tail ? { logTail: tail } : {}),
+        ...(this.recentLogs.length > 0 ? { stderrPreview: this.recentLogs.slice(-1500) } : {}),
+      },
+      'relayclaw sidecar startup failed: readiness timeout',
+    );
+    this.stop('readiness_timeout');
     throw new Error(
-      `jiuwen sidecar did not become ready in time${this.recentLogs ? `: ${summarizeLogs(this.recentLogs)}` : ''}`,
+      `jiuwen sidecar did not become ready in time${this.recentLogs ? `: ${tail}` : ''}`,
     );
   }
 }

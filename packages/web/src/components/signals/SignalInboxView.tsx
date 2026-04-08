@@ -268,7 +268,7 @@ export function SignalInboxView() {
               value={filters.query}
               onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
               placeholder="搜索标题、来源、标签..."
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm md:col-span-2"
+              className="ui-input rounded-lg px-3 py-2 text-sm md:col-span-2"
             />
             <select
               value={filters.tier}
