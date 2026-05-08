@@ -165,6 +165,30 @@ flowchart LR
 4. 损坏或缺失 registry 时沿用当前 `loadInstalledRegistry` 的空 registry fallback，更新检查返回空列表，不影响页面。
 5. 当前 `source === 'local'` 的上传技能不参与远程更新，避免误把本地用户资产覆盖。
 
+老用户版本基线策略：
+
+1. 如果历史安装记录没有 `installedVersion`，说明系统不知道本地内容对应远端哪个版本。
+2. 第一次检查时，如果远端能返回 `version`，只将该版本写入 `installedVersion`、`latestVersion`、`lastCheckedAt`，并将 `updateStatus` 标记为 `current`。
+3. 这次检查不弹更新提示，不把未知版本误判为可更新。
+4. 后续检查中，如果远端 `version` 与本地 `installedVersion` 不一致，再判定为 `available`。
+5. 该策略会牺牲一次历史旧版本的主动发现能力，但能避免误报和不必要的第三方内容覆盖。
+
+老用户基线流程：
+
+```mermaid
+flowchart TD
+  A["读取 installed skill record"] --> B{"installedVersion 是否存在"}
+  B -- "存在" --> C["比较 installedVersion 与 remote version"]
+  B -- "不存在" --> D{"remote version 是否存在"}
+  D -- "不存在" --> E["标记 unknown/failed，不提示"]
+  D -- "存在" --> F["写入 installedVersion = remote version"]
+  F --> G["updateStatus = current"]
+  G --> H["不弹更新提示"]
+  C --> I{"版本是否不同"}
+  I -- "不同" --> J["updateStatus = available，返回更新项"]
+  I -- "相同" --> K["updateStatus = current，不提示"]
+```
+
 兼容状态矩阵：
 
 | 场景 | 行为 |
@@ -178,6 +202,30 @@ flowchart LR
 | 远端 version 不变但内容变化 | 本期不判定更新，后续增强可引入 hash |
 
 ## 2. 方案设计
+
+### 2.0 技术选型
+
+本需求优先复用当前技能系统已有技术栈，不引入新基础设施。
+
+| 领域 | 选型 | 原因 |
+|---|---|---|
+| 后端服务层 | TypeScript domain service | 当前 SkillHub、安装、registry 均已在 `packages/api/src/domains/cats/services/skillhub/` 下组织 |
+| HTTP 路由 | Fastify route | 当前 `/api/skills/*` 已使用 Fastify 插件注册 |
+| 远端数据源 | 复用 `TencentSkillHubService` | 当前技能广场列表、搜索、下载均由该服务封装 |
+| 版本判断 | SkillHub `version` 字段 | 实际远端接口已返回版本号，MVP 不需要下载 ZIP 做检查 |
+| 本地状态 | `.office-claw/installed-skills.json` | 已是远程安装技能的来源记录和持久化真相源 |
+| 更新写入 | Node fs/promises | 当前安装、上传、registry 持久化已使用该方式 |
+| UI 弹窗 | 复用 `AppModal` | 当前技能广场风险提示等弹窗已使用该组件 |
+| 前端请求 | `apiFetch` | 当前技能广场、我的技能、上传技能均使用统一 API client |
+| 前端刷新 | `notifySkillOptionsChanged()` + `refreshSignal` | 当前安装/卸载/上传后的技能缓存刷新已经采用该机制 |
+
+不选型项：
+
+1. 不引入 SQLite/Redis 存储更新状态；状态随 skill 安装记录落在 registry 中即可。
+2. 不引入后台 job 调度；本期仅由页面打开触发检查。
+3. 不引入 semver 解析库；MVP 只做字符串不等判断，减少依赖和版本格式假设。
+4. 不引入文件 diff 库；MVP 不展示变更 diff。
+5. 不引入 hash 校验链路；后续增强再考虑。
 
 ### 2.1 整体方案设计
 
@@ -241,9 +289,10 @@ export async function updateSkill(
    - 默认限频窗口建议 6 小时。
 4. 根据 `remoteSkillName` 拉取远端技能元数据。
 5. 读取远端 `version`。
-6. 比较本地 `installedVersion` 和远端 `version`。
-7. 写回 `latestVersion`、`lastCheckedAt`、`updateStatus`。
-8. 返回 `updateStatus === 'available'` 的技能列表。
+6. 如果本地没有 `installedVersion`，执行老用户版本基线补齐，不提示更新。
+7. 如果本地已有 `installedVersion`，比较本地 `installedVersion` 和远端 `version`。
+8. 写回 `latestVersion`、`lastCheckedAt`、`updateStatus`。
+9. 返回 `updateStatus === 'available'` 的技能列表。
 
 更新技能的核心步骤：
 
@@ -566,6 +615,45 @@ sequenceDiagram
   Modal->>List: refreshSignal + 1
   Modal->>User: 展示更新成功
 ```
+
+### 2.7 设计约束
+
+功能约束：
+
+1. 页面打开只自动检查，不自动更新。
+2. 只有 `source === 'skillhub'` 的技能参与检查和更新。
+3. `source === 'local'` 的上传技能不参与远程更新。
+4. `office-claw-skills/` 内置技能不参与远程更新。
+5. 老用户缺少 `installedVersion` 时只补齐版本基线，不提示更新。
+6. 同一次前端页面生命周期内只自动检查一次。
+7. 用户关闭更新弹窗后，本次页面生命周期内不重复弹出。
+
+技术约束：
+
+1. 检查更新阶段不得下载 ZIP，只调用远端列表/详情类 metadata 能力获取 `version`。
+2. 执行更新阶段才允许下载 ZIP。
+3. 更新写入必须使用临时目录和备份目录，不允许直接覆盖正式目录。
+4. registry 写入仍通过 `InstalledSkillRegistry` 统一串行化，避免并发丢失更新。
+5. 更新服务不得修改 runtime config 文件，例如 `.mcp.json`、`.codex/config.toml`、`.gemini/settings.json`。
+6. 更新服务不得删除 Redis、SQLite、用户项目文件或非 skill 目录。
+7. 路由层只做鉴权、参数校验和错误码映射，业务逻辑放在 `SkillUpdateService`。
+
+体验约束：
+
+1. 更新检查失败不弹阻断型弹窗。
+2. 更新检查不能阻塞“我的技能”列表加载。
+3. 弹窗文案必须明确更新会替换本地第三方技能内容。
+4. 更新失败时保留弹窗或展示错误，不能让用户误以为更新成功。
+5. 更新成功后必须刷新我的技能列表和聊天输入技能菜单缓存。
+
+安全约束：
+
+1. 下载包内容不执行，只落盘。
+2. 文件路径必须做路径穿越校验。
+3. 远端包必须包含合法 `SKILL.md`。
+4. 更新不能覆盖同名内置技能。
+5. 更新不能覆盖非 registry 记录的本地目录。
+6. 日志不得记录 skill 文件正文。
 
 ## 3. 可靠可用性
 
