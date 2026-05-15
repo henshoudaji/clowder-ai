@@ -10,6 +10,14 @@
 
 本设计目标是补齐审批记录能力，并在安全管理弹窗中新增一个独立 tab 展示记录。非目标是不改变敏感操作识别规则、不重做权限审批卡片、不改变 Jiuwen/RelayClaw 的运行时权限策略编辑能力。
 
+当前代码事实：
+
+1. 审批请求创建与响应主链路在 `packages/api/src/domains/agents/services/auth/AuthorizationManager.ts`。
+2. 当前授权数据已有 pending、rule、audit 三类 store；Redis key 位于 `packages/api/src/domains/agents/services/stores/redis-keys/authorization-keys.ts`。
+3. 当前 Redis pending request 会保存 `context`，Redis audit 会保存 `reason`，但本需求新增的 SQLite 审批记录不照搬这些内容字段。
+4. 项目已经引入 `@office-claw/sqlite-adapter`，且 `packages/api/package.json` 的 build 链路包含该包；桌面端新增 SQLite 审批记录 store 不需要从零引入 SQLite 生态。
+5. 前端安全管理入口在 `packages/web/src/components/SecurityManagementModal.tsx`，聊天审批卡片在 `packages/web/src/components/AuthorizationCard.tsx`。
+
 ### 1.2 需求场景分析
 
 1. 用户在对话中审批了敏感操作，之后需要回到安全管理查看本次操作名称、发起会话、审批选择和时间。
@@ -82,9 +90,108 @@
 
 后端可以返回规则自动命中记录，前端默认不展示。未来如果需要“策略命中日志”或“全部审计”，可以在同一接口上增加筛选开关。自动清理开关只控制保留策略，不改变存储位置：开启和关闭都写同一个 SQLite 审批记录库。
 
+关键设计决策：
+
+1. 存储统一：桌面端审批记录统一存 SQLite，自动清理开关只影响保留策略，不切换存储后端。
+2. 查询统一：前端只调用 `/api/authorization/records`，不感知 Redis、SQLite 或底层 audit event。
+3. 内容最小化：审批记录不保存完整上下文，仅保存 `operationSummary` 这类脱敏摘要。
+4. 搜索收敛：MVP 只支持会话名称搜索，避免把审批记录页做成复杂审计后台。
+5. 分页强制：页面查询必须分页，接口默认 50、最大 200，并返回 `totalCount`。
+
 ### 2.3 方案详细设计
 
-#### 2.3.1 功能原理
+#### 2.3.1 总体详细设计流程
+
+端到端流程如下：
+
+```mermaid
+flowchart TD
+  A["智能体触发敏感操作"] --> B{"是否命中授权规则"}
+  B -- "命中" --> C["写入规则命中审批记录"]
+  B -- "未命中" --> D["创建 pending request"]
+  D --> E["写入请求发起审批记录"]
+  E --> F["前端展示审批卡片"]
+  F --> G{"用户选择"}
+  G -- "本次允许" --> H["更新 allow + once 记录"]
+  G -- "始终允许" --> I["创建全局规则并更新 allow + global 记录"]
+  G -- "拒绝" --> J["更新 deny 记录"]
+  C --> K["分页接口返回记录和总条数"]
+  H --> K
+  I --> K
+  J --> K
+```
+
+审批记录状态如下：
+
+```mermaid
+stateDiagram-v2
+  [*] --> Requested
+  Requested --> Waiting: 创建 pending
+  Waiting --> AllowedOnce: 本次允许
+  Waiting --> AllowedAlways: 始终允许
+  Waiting --> Denied: 拒绝
+  Waiting --> Waiting: 超时后仍可稍后审批
+  Requested --> RuleMatched: 命中已有规则
+  AllowedOnce --> [*]
+  AllowedAlways --> [*]
+  Denied --> [*]
+  RuleMatched --> [*]
+```
+
+组件关系如下：
+
+```mermaid
+flowchart LR
+  Chat["对话审批卡片"] --> AuthRoute["/api/authorization/respond"]
+  Agent["智能体权限请求"] --> AuthManager["AuthorizationManager"]
+  AuthManager --> PendingStore["PendingRequestStore"]
+  AuthManager --> RuleStore["AuthorizationRuleStore"]
+  AuthManager --> ApprovalStore["SqliteApprovalRecordStore"]
+  SecurityUI["安全管理 / 审批记录 tab"] --> RecordsApi["/api/authorization/records"]
+  SecurityUI --> SettingsApi["/api/authorization/records/settings"]
+  RecordsApi --> ApprovalStore
+  SettingsApi --> ApprovalStore
+```
+
+关键时序如下：
+
+```mermaid
+sequenceDiagram
+  participant Agent as 智能体
+  participant Manager as AuthorizationManager
+  participant UI as Chat UI
+  participant User as 用户
+  participant Store as SqliteApprovalRecordStore
+  participant Sec as 安全管理
+  Agent->>Manager: requestPermission(action, reason)
+  Manager->>Store: insert(pending record)
+  Manager-->>UI: authorization:request
+  UI-->>User: 展示审批卡片
+  User->>UI: 本次允许 / 始终允许 / 拒绝
+  UI->>Manager: POST /api/authorization/respond
+  Manager->>Store: update(final decision)
+  Sec->>Manager: GET /api/authorization/records?limit=50
+  Manager-->>Sec: records + pageInfo + totalCount
+```
+
+界面结构如下：
+
+```mermaid
+flowchart TB
+  Modal["安全管理弹窗"] --> Tabs["Tab: 安全策略 | 审批记录"]
+  Tabs --> Policy["安全策略: 开关 + 敏感操作配置"]
+  Tabs --> Records["审批记录"]
+  Records --> Cleanup["开关: 自动清理审批记录"]
+  Records --> Search["搜索框: 搜索会话名称"]
+  Records --> Count["总数: 共 N 条 / 找到 N 条"]
+  Records --> Row["记录行: 操作 / 会话 / 智能体 / 结果 / 时间"]
+  Records --> More["分页: 加载更多"]
+  Records --> Empty["空态: 最近 30 天暂无审批记录"]
+  Records --> SearchEmpty["搜索空态: 没有找到匹配会话的审批记录"]
+  Records --> Error["错误态: 加载失败 + 重试"]
+```
+
+#### 2.3.2 功能原理
 
 核心机制：
 
@@ -117,11 +224,11 @@
 2. 审批记录查询失败只影响 `审批记录` tab，不能影响 `安全策略` tab。
 3. 前端列表接口失败时展示错误态和重试按钮。
 
-#### 2.3.2 接口设计
+#### 2.3.3 接口设计
 
 本需求需要前后端分离实现，因此接口层采用“后端提供业务记录、前端只消费业务记录”的契约。前端不直接读取 `/api/authorization/audit`，也不自行按 `requestId` 拼装事件，避免前端理解底层审计事件语义。
 
-##### 2.3.2.1 后端接口职责
+##### 2.3.3.1 后端接口职责
 
 后端负责：
 
@@ -140,7 +247,7 @@
 5. 提供按会话名称搜索的输入框，把关键词传给后端。
 6. 处理加载态、空态、错误态和重试。
 
-##### 2.3.2.2 审批记录查询接口
+##### 2.3.3.2 审批记录查询接口
 
 建议新增查询接口：
 
@@ -240,6 +347,16 @@ GET /api/authorization/records?limit=50&cursor=xxx&threadQuery=xxx&includeRuleMa
 4. 不保存 stdout/stderr、完整 tool input JSON、完整 shell command 上下文、文件内容或对话内容。
 5. 对 token、password、api key、secret 等敏感片段进行掩码处理。
 
+摘要生成建议：
+
+| 操作类型 | `operationSummary` 示例 | 不保存内容 |
+|---|---|---|
+| 终端命令 | `执行命令：corepack pnpm --dir packages/api run build` | stdout/stderr、完整环境变量、完整上下文 |
+| 文件读取 | `读取文件：packages/api/src/...` | 文件正文 |
+| 文件写入 | `写入文件：docs/superpowers/specs/...` | 写入内容全文 |
+| 网络访问 | `访问网络：api.example.com` | 请求体、响应体、凭据 |
+| 规则命中 | `命中授权规则：shell_command` | 规则外的上下文输入 |
+
 枚举与文案映射由后端保证：
 
 | 条件 | `decision` | `scope` | `approvalSource` | `approvalLabel` |
@@ -262,7 +379,7 @@ GET /api/authorization/records?limit=50&cursor=xxx&threadQuery=xxx&includeRuleMa
 
 参数非法时优先采用容错默认值；只有类型结构无法解析、或后续增加复杂参数时才返回 `400`。
 
-##### 2.3.2.3 审批记录设置接口
+##### 2.3.3.3 审批记录设置接口
 
 安全管理页面需要展示和修改自动清理开关。建议新增设置接口：
 
@@ -295,8 +412,9 @@ interface SecurityApprovalRecordSettings {
 3. 开关只影响保留策略，不改变存储位置，开启和关闭都使用同一个 SQLite 审批记录库。
 4. 即使关闭自动清理，也建议保留硬上限保护，例如 100000 条，避免本地磁盘无限增长。
 5. 页面应提供“手动清空审批记录”入口；该能力可作为后续接口 `DELETE /api/authorization/records` 扩展。
+6. 设置保存位置应复用现有安全配置或用户配置机制；不得把开关硬编码在前端。
 
-##### 2.3.2.4 前端数据类型契约
+##### 2.3.3.4 前端数据类型契约
 
 前端建议在安全管理相关组件旁定义窄类型，避免把后端 audit event 类型泄漏进 UI：
 
@@ -361,7 +479,7 @@ GET /api/authorization/records?limit=50&cursor=xxx&threadQuery=xxx&includeRuleMa
 5. 顶部展示 `totalCount`：无搜索时展示“共 N 条”，有搜索时展示“找到 N 条”。
 6. `operationSummary` 作为纯文本摘要展示，超长由前端截断，不使用 HTML 渲染。
 
-##### 2.3.2.5 后端查询规则
+##### 2.3.3.5 后端查询规则
 
 后端查询规则：
 
@@ -388,7 +506,7 @@ GET /api/authorization/audit
 
 该接口继续作为低层审计事件查询，不作为安全管理页面的直接数据源。
 
-#### 2.3.3 界面设计
+#### 2.3.4 界面设计
 
 安全管理弹窗新增 tab：
 
@@ -429,7 +547,7 @@ GET /api/authorization/audit
 5. 自动规则命中记录：后端返回时前端默认过滤，不在列表展示。
 6. 搜索无结果：展示“没有找到匹配会话的审批记录”，并保留清空搜索入口。
 
-#### 2.3.4 数据结构设计
+#### 2.3.5 数据结构设计
 
 现有 Redis `AuthorizationAuditEntry` 包含 `reason` 等字段，但本需求的 SQLite 审批记录表不应照搬全量审计事件。桌面端审批记录只保存操作事实、会话名称快照和脱敏截断后的操作摘要。
 
@@ -480,6 +598,39 @@ authorization_approval_records
 4. 查询接口默认返回 50 条，最大返回 200 条。
 5. 建议索引：`eventTime DESC, id DESC`、`approvalSource + eventTime`、`threadTitle`。
 
+建议表结构草案：
+
+```sql
+CREATE TABLE IF NOT EXISTS authorization_approval_records (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  invocation_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  thread_title TEXT,
+  action TEXT NOT NULL,
+  operation_summary TEXT,
+  decision TEXT NOT NULL,
+  scope TEXT,
+  approval_source TEXT NOT NULL,
+  requested_at INTEGER NOT NULL,
+  decided_at INTEGER,
+  decided_by TEXT,
+  matched_rule_id TEXT,
+  event_time INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_approval_records_event_time
+  ON authorization_approval_records(event_time DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_approval_records_source_time
+  ON authorization_approval_records(approval_source, event_time DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_approval_records_thread_title
+  ON authorization_approval_records(thread_title);
+```
+
 ## 3. 可靠可用性设计
 
 1. 审批记录写入 best-effort：审批主链路优先，SQLite 写入失败只记录后端 warn，不阻断用户审批。
@@ -489,6 +640,14 @@ authorization_approval_records
 5. 前端隔离：`审批记录` tab 失败不影响 `安全策略` tab 的加载和保存。
 6. 自动清理隔离：开关只影响 SQLite 审批记录保留策略，不影响 pending request、authorization rule 或实际审批行为。
 7. 可诊断性：后端记录 requestId、threadId、agentId，便于从页面记录追踪到后端日志。
+
+降级与回滚：
+
+1. SQLite 初始化失败时，审批记录 tab 展示错误态；审批主链路继续使用现有 pending/rule 流程。
+2. `/api/authorization/records` 失败时只影响审批记录展示，不影响安全策略读取、保存和聊天审批卡片。
+3. 自动清理设置接口失败时，前端回滚开关显示状态，并提示用户重试。
+4. 版本回滚后，SQLite 文件保留在本地，不影响旧版本运行；旧版本不会读取该文件。
+5. 后续如需要迁移表结构，使用显式 schema version，避免启动时对未知结构做破坏性修改。
 
 ## 4. 安全隐私设计
 
@@ -540,110 +699,20 @@ authorization_approval_records
 2. 自动清理开启时默认保留 30 天。
 3. 自动清理关闭时建议保留 100000 条硬上限保护；达到上限时可拒绝继续写入、提示用户清理，或按最旧记录淘汰，具体策略实现前需确认产品口径。
 
-## 6. 图片与图示补充
+## 6. 实施计划
 
-### 6.1 流程图
-
-```mermaid
-flowchart TD
-  A["智能体触发敏感操作"] --> B{"是否命中授权规则"}
-  B -- "命中" --> C["写入规则命中审批记录"]
-  B -- "未命中" --> D["创建 pending request"]
-  D --> E["写入请求发起审批记录"]
-  E --> F["前端展示审批卡片"]
-  F --> G{"用户选择"}
-  G -- "本次允许" --> H["更新 allow + once 记录"]
-  G -- "始终允许" --> I["创建全局规则并更新 allow + global 记录"]
-  G -- "拒绝" --> J["更新 deny 记录"]
-  C --> K["分页接口返回记录和总条数"]
-  H --> K
-  I --> K
-  J --> K
-```
-
-### 6.2 状态图
-
-```mermaid
-stateDiagram-v2
-  [*] --> Requested
-  Requested --> Waiting: 创建 pending
-  Waiting --> AllowedOnce: 本次允许
-  Waiting --> AllowedAlways: 始终允许
-  Waiting --> Denied: 拒绝
-  Waiting --> Waiting: 超时后仍可稍后审批
-  Requested --> RuleMatched: 命中已有规则
-  AllowedOnce --> [*]
-  AllowedAlways --> [*]
-  Denied --> [*]
-  RuleMatched --> [*]
-```
-
-### 6.3 架构图
-
-```mermaid
-flowchart LR
-  Chat["对话审批卡片"] --> AuthRoute["/api/authorization/respond"]
-  Agent["智能体权限请求"] --> AuthManager["AuthorizationManager"]
-  AuthManager --> PendingStore["PendingRequestStore"]
-  AuthManager --> RuleStore["AuthorizationRuleStore"]
-  AuthManager --> ApprovalStore["SqliteApprovalRecordStore"]
-  SecurityUI["安全管理 / 审批记录 tab"] --> RecordsApi["/api/authorization/records"]
-  SecurityUI --> SettingsApi["/api/authorization/records/settings"]
-  RecordsApi --> ApprovalStore
-  SettingsApi --> ApprovalStore
-```
-
-### 6.4 时序图
-
-```mermaid
-sequenceDiagram
-  participant Agent as 智能体
-  participant Manager as AuthorizationManager
-  participant UI as Chat UI
-  participant User as 用户
-  participant Store as SqliteApprovalRecordStore
-  participant Sec as 安全管理
-  Agent->>Manager: requestPermission(action, reason)
-  Manager->>Store: insert(pending record)
-  Manager-->>UI: authorization:request
-  UI-->>User: 展示审批卡片
-  User->>UI: 本次允许 / 始终允许 / 拒绝
-  UI->>Manager: POST /api/authorization/respond
-  Manager->>Store: update(final decision)
-  Sec->>Manager: GET /api/authorization/records?limit=50
-  Manager-->>Sec: records + pageInfo + totalCount
-```
-
-### 6.5 界面示意图
-
-```mermaid
-flowchart TB
-  Modal["安全管理弹窗"] --> Tabs["Tab: 安全策略 | 审批记录"]
-  Tabs --> Policy["安全策略: 开关 + 敏感操作配置"]
-  Tabs --> Records["审批记录"]
-  Records --> Cleanup["开关: 自动清理审批记录"]
-  Records --> Search["搜索框: 搜索会话名称"]
-  Records --> Count["总数: 共 N 条 / 找到 N 条"]
-  Records --> Row["记录行: 操作 / 会话 / 智能体 / 结果 / 时间"]
-  Records --> More["分页: 加载更多"]
-  Records --> Empty["空态: 最近 30 天暂无审批记录"]
-  Records --> SearchEmpty["搜索空态: 没有找到匹配会话的审批记录"]
-  Records --> Error["错误态: 加载失败 + 重试"]
-```
-
-## 7. 实施计划
-
-1. 后端阶段一：新增 SQLite 审批记录表和 store，字段只包含操作事实、`threadTitle` 快照、分页排序字段，不保存内容字段。
+1. 后端阶段一：新增 SQLite 审批记录表和 store，字段只包含操作事实、`threadTitle` 快照、`operationSummary`、分页排序字段，不保存完整内容字段。
 2. 后端阶段二：在 request 创建、用户响应、规则命中节点写入或更新 SQLite 审批记录；保留现有 pending/rule 行为不变。
 3. 后端阶段三：新增 `/api/authorization/records` 分页查询接口，完成 `limit/cursor/threadQuery/includeRuleMatched/totalCount/retention` 契约。
 4. 后端阶段四：新增 `/api/authorization/records/settings`，支持“自动清理审批记录”开关，默认开启且保留 30 天。
-5. 前后端联调点一：后端提供固定 mock 数据或测试环境数据，前端按 `SecurityApprovalRecordsResponse` 对接，不依赖真实敏感操作触发。
-6. 前端阶段一：拆分安全管理 UI，增加 `安全策略 / 审批记录` tab，并保持安全策略原行为不变。
-7. 前端阶段二：新增审批记录列表组件、会话名称搜索框、自动清理开关、总条数展示和加载更多，默认请求 `includeRuleMatched=false`。
-8. 前后端联调点二：用真实审批卡片分别验证“本次允许 / 始终允许 / 拒绝 / 待审批”四类记录。
-9. 补充测试：后端 SQLite store、route、settings、分页游标、自动清理；前端 tab、加载态、空态、错误态、搜索、分页和渲染。
+5. 后端阶段五：实现 `operationSummary` 生成、截断和脱敏规则，覆盖 shell/file/network 等常见敏感操作。
+6. 前后端联调点一：后端提供固定 mock 数据或测试环境数据，前端按 `SecurityApprovalRecordsResponse` 对接，不依赖真实敏感操作触发。
+7. 前端阶段一：拆分安全管理 UI，增加 `安全策略 / 审批记录` tab，并保持安全策略原行为不变。
+8. 前端阶段二：新增审批记录列表组件、会话名称搜索框、自动清理开关、总条数展示和加载更多，默认请求 `includeRuleMatched=false`。
+9. 前后端联调点二：用真实审批卡片分别验证“本次允许 / 始终允许 / 拒绝 / 待审批”四类记录。
+10. 补充测试：后端 SQLite store、route、settings、分页游标、自动清理、摘要脱敏；前端 tab、加载态、空态、错误态、搜索、分页和渲染。
 
-## 8. 验证方案
+## 7. 验证方案
 
 单元测试：
 
@@ -652,6 +721,7 @@ flowchart TB
 3. 规则命中记录返回 `approvalSource=rule` 或 `matchedRuleId`。
 4. SQLite store 不保存 `context`、`reason`、`respondReason`。
 5. 写入记录时保存 `threadTitle` 快照，缺失时保存 `null`。
+6. `operationSummary` 生成时会截断并掩码 token/password/api key/secret。
 
 接口测试：
 
@@ -685,9 +755,10 @@ flowchart TB
 
 1. 使用一份固定 JSON fixture 覆盖 `allow + once`、`allow + global`、`deny`、`pending`、`rule`。
 2. fixture 覆盖 `threadTitle` 有值和为空两种情况，以及分页 `pageInfo`、`totalCount`、`retention`。
-3. fixture 不包含 `reason/context/respondReason`。
-4. 后端 route 测试断言 fixture 形状，前端组件测试复用同一 fixture。
-5. 若字段名调整，必须同时更新后端响应测试和前端类型/渲染测试。
+3. fixture 覆盖 `operationSummary` 有值和为空两种情况。
+4. fixture 不包含 `reason/context/respondReason`。
+5. 后端 route 测试断言 fixture 形状，前端组件测试复用同一 fixture。
+6. 若字段名调整，必须同时更新后端响应测试和前端类型/渲染测试。
 
 手工验证：
 
@@ -695,7 +766,7 @@ flowchart TB
 2. 触发一个敏感操作并选择“始终允许”，在审批记录中看到“始终允许”，后续规则自动命中不在默认列表展示。
 3. 触发一个敏感操作并选择“拒绝”，在审批记录中看到“拒绝”。
 
-## 9. 风险与待确认项
+## 8. 风险与待确认项
 
 风险：
 
